@@ -35,7 +35,7 @@ herdr-app do layout.switch --name 2code
   warns about uncommitted or unpushed work, runs `teardown_script` and keeps the branch.
 - **Project settings** (gear) edit `2code.json` scripts and templates.
 - **Terminal tabs**: "+ New" opens Herdr's menu (terminal or agent); the
-  chevron opens terminal templates.
+  chevron opens terminal templates; middle click closes a tab.
 - **Files**: tree with icons, git colors and a right-click menu; files open as
   editor tabs (save, find, go to line, reload on disk changes, markdown
   preview with links to local files, images).

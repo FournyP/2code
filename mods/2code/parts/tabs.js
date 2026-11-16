@@ -64,6 +64,8 @@ export class Tabs {
       .border_b(2).border_color(c.active ? th.foreground : th.background)
       .text_color(c.active ? th.foreground : th.dim).hover((s) => s.text_color(th.foreground))
       .on_click(() => run("tab.select", { id: c.id }))
+      // Middle click closes, as in VS Code (unsaved files still ask).
+      .on_mouse_down("middle", (_e, cx) => { cx.stop_propagation(); this.close(c); })
       .on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
         if (file) openOverlay({ mod: "2code", kind: "popup", width: 240, height: file.on ? 70 : 130, props: { part: "fileMenu", tab: true, path: file.path, on: file.on ?? null, root: file.root ?? null } });
