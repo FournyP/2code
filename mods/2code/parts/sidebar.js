@@ -10,7 +10,7 @@ import { spaces, panes, focused, run, theme, layout, window, pickFolder, openOve
 import { t, resolveLocale } from "../lib/i18n.js";
 import { readProjectConfig, scriptArgv } from "../lib/config.js";
 import { place, repoOf } from "../lib/git.js";
-import { savedProjects, addProject, projectKey, projectName, checkouts, childRepos } from "../lib/projects.js";
+import { savedProjects, addProject, moveProject, orderChildren, projectKey, projectName, checkouts, childRepos } from "../lib/projects.js";
 import { githubOwner, githubAvatar } from "../lib/os.js";
 import { icon, iconButton, stop, dot, worst, find } from "../lib/ui.js";
 
@@ -133,7 +133,9 @@ export class Sidebar {
     const nested = new Set(saved.flatMap((g) => (this.children[projectKey(g)] ?? []).map((c) => projectKey(child(g, c)))));
     return saved.filter((p) => !nested.has(projectKey(p))).map((p) => {
       const e = this.entry(p, open);
-      e.repos = (this.children[e.key] ?? []).map((c) => this.entry(child(p, c), open));
+      // In the person's order (dragged), new repos last.
+      const order = p.order ?? [], rank = (c) => (order.includes(c) ? order.indexOf(c) : order.length);
+      e.repos = [...(this.children[e.key] ?? [])].sort((a, b) => rank(a) - rank(b)).map((c) => this.entry(child(p, c), open));
       e.every = [...e.profiles, ...e.repos.flatMap((r) => r.profiles)];
       return e;
     });
@@ -203,7 +205,33 @@ export class Sidebar {
       .text_size(size * 0.55).font_semibold().text_color(th.muted).child((p.name[0] ?? "?").toUpperCase());
   }
 
-  projectRow(p, th, depth = 0) {
+  // Drag to reorder, within one level only: top-level projects among
+  // themselves, a group's repos inside the group. Herdr has no in-app drag, so
+  // it's a press on a row, moves over its siblings, and the release.
+  dragOver(key, parent, e, cx) {
+    const d = this.drag;
+    const at = d && d.parent === parent && d.key !== key ? { key, before: e.local_position.y < e.bounds.height / 2 } : null;
+    if (at?.key !== this.dropAt?.key || at?.before !== this.dropAt?.before) { this.dropAt = at; cx.notify(); }
+  }
+
+  drop(projects) {
+    const d = this.drag, at = this.dropAt;
+    this.drag = this.dropAt = null;
+    if (!d || !at) return;
+    if (!d.parent) return moveProject(d.key, at.key, at.before);
+    const group = projects.find((g) => g.key === d.parent);
+    const from = group?.repos.find((r) => r.key === d.key)?.path, to = group?.repos.find((r) => r.key === at.key)?.path;
+    if (!from || !to) return;
+    const paths = group.repos.map((r) => r.path).filter((x) => x !== from);
+    paths.splice(paths.indexOf(to) + (at.before ? 0 : 1), 0, from);
+    orderChildren({ path: group.path, machine: group.machine }, paths);
+  }
+
+  dropLine(th, depth) {
+    return div().h(2).flex_none().ml(8 + depth * 16).mr(8).rounded(1).bg(th.accent);
+  }
+
+  projectRow(p, th, depth = 0, parent = "") {
     const all = p.every ?? p.profiles, group = Boolean(p.repos?.length);
     const active = all.some((x) => x.space?.active);
     const open = !this.closed[p.key];
@@ -213,6 +241,8 @@ export class Sidebar {
       .bg(active && !open ? th.selected : th.chrome).hover((s) => s.bg(th.hover))
       .border_1().border_color(this.ring(p.key) ? th.accent : th.chrome + "00")
       .on_hover((h, cx) => { this.hover = h ? p.key : (this.hover === p.key ? null : this.hover); cx.notify(); })
+      .on_mouse_down("left", () => { this.drag = { key: p.key, parent }; this.dropAt = null; })
+      .on_mouse_move((e, cx) => this.dragOver(p.key, parent, e, cx))
       .on_click(() => { this.cursor = p.key; this.openProject(p); })
       .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.menu("project", p); })
       .child(this.avatar(p, th))
@@ -260,10 +290,13 @@ export class Sidebar {
     ]);
   }
 
-  rows(p, th, depth = 0) {
+  rows(p, th, depth = 0, parent = "") {
+    const at = this.dropAt?.key === p.key ? this.dropAt : null;
     return [
-      this.projectRow(p, th, depth),
-      ...(this.closed[p.key] ? [] : [...p.profiles.map((x) => this.profileRow(p, x, th, depth)), ...(p.repos ?? []).flatMap((r) => this.rows(r, th, depth + 1))]),
+      ...(at?.before ? [this.dropLine(th, depth)] : []),
+      this.projectRow(p, th, depth, parent),
+      ...(this.closed[p.key] ? [] : [...p.profiles.map((x) => this.profileRow(p, x, th, depth)), ...(p.repos ?? []).flatMap((r) => this.rows(r, th, depth + 1, p.key))]),
+      ...(at && !at.before ? [this.dropLine(th, depth)] : []),
     ];
   }
 
@@ -317,6 +350,9 @@ export class Sidebar {
       .track_focus(this.handle)
       .on_key_down((e, cx) => this.key(e, projects, cx))
       .on_mouse_down("left", (_e, cx) => { this.handle.focus(); cx.notify(); })
+      .on_mouse_up("left", (_e, cx) => { if (this.drag) { this.drop(projects); cx.notify(); } })
+      // Released outside the sidebar: no drop.
+      .on_hover((h, cx) => { if (!h && this.drag) { this.drag = this.dropAt = null; cx.notify(); } })
       .on_size_change((size, cx) => { if (Math.abs(size.width - this.width) >= 1) { this.width = size.width; cx.notify(); } })
       .child(h_flex().h(30).px(narrow ? 0 : 16).items_center().when(narrow, (el) => el.justify_center())
         .when(!narrow, (el) => el.justify_between().child(div().text_size(12).text_color(th.dim).child(t("projects"))))

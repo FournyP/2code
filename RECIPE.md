@@ -45,10 +45,15 @@ and colors live in the code.
   `transition` on `top` and `opacity`.
 - **Agent dots**: `working` `#34d399` pulsing, `blocked` `#facc15`, `done`
   `#22c55e`, `idle` none.
-- **Projects**: shared `2code.projects` (`[{path, machine, name?}]`). Every 4s
+- **Projects**: shared `2code.projects` (`[{path, machine, name?, order?}]`). Every 4s
   the sidebar adds each open space's repo (main checkout via
   `git rev-parse --git-common-dir`) and reads `git worktree list --porcelain`.
   Name from folder ("app.git" → "app", "bare.git" → parent) unless renamed.
+  Drag a project row to reorder it within its level only: top-level projects
+  reorder the saved list, a group's repos save their order as the group's
+  `order` (new repos last). No in-app drag in Herdr: press on a row, move over
+  a sibling (upper / lower half: drop line before / after), release; leaving
+  the sidebar cancels.
 - **Clicks**: project selects its shown, else first open, else main worktree;
   worktree selects its space, else `space.new {folder}`. `+` opens Herdr's
   `worktree` dialog (action `new`, main checkout); a `setup_script` runs as

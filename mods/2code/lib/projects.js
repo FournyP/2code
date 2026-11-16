@@ -36,7 +36,25 @@ export function removeProject(path, machine = null) {
 }
 
 export function renameProject(path, machine, name) {
-  setShared(KEY, savedProjects().map((p) => (same(p, { path, machine }) ? { path: p.path, machine: p.machine ?? null, ...(name?.trim() ? { name: name.trim() } : {}) } : p)));
+  setShared(KEY, savedProjects().map((p) => {
+    if (!same(p, { path, machine })) return p;
+    const { name: _old, ...rest } = p;
+    return name?.trim() ? { ...rest, name: name.trim() } : rest;
+  }));
+}
+
+// Moves a saved project (by key) before or after another.
+export function moveProject(from, to, before) {
+  const list = savedProjects(), item = list.find((p) => projectKey(p) === from);
+  const rest = list.filter((p) => p !== item), at = rest.findIndex((p) => projectKey(p) === to);
+  if (!item || at < 0) return;
+  rest.splice(before ? at : at + 1, 0, item);
+  setShared(KEY, rest);
+}
+
+// A group's child repos in the person's order (paths), kept on the group's entry.
+export function orderChildren(group, paths) {
+  setShared(KEY, savedProjects().map((p) => (same(p, group) ? { ...p, order: paths } : p)));
 }
 
 // Every checkout of a repo (`git worktree list`): { path, branch, main }, the
