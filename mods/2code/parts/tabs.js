@@ -66,7 +66,11 @@ export class Tabs {
       .border_b(2).border_color(c.active ? th.foreground : th.background)
       .text_color(c.active ? th.foreground : th.dim).hover((s) => s.text_color(th.foreground))
       .on_click(() => run("tab.select", { id: c.id }))
-      .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: here().space?.id } } }); })
+      .on_mouse_down("right", (_e, cx) => {
+        cx.stop_propagation();
+        if (file) openOverlay({ mod: "2code", kind: "popup", width: 240, height: file.on ? 70 : 130, props: { part: "fileMenu", tab: true, path: file.path, on: file.on ?? null } });
+        else openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: here().space?.id } } });
+      })
       .child(glyph)
       .child(div().min_w(0).truncate().child(name))
       .when(Boolean(dot(c.status, th)), (el) => el.child(dot(c.status, th)))

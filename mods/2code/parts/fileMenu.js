@@ -7,18 +7,27 @@ import { t } from "../lib/i18n.js";
 import { reveal } from "../lib/os.js";
 import { openFile, requestEditor, baseName } from "../lib/editor.js";
 import { createFile, createFolder, rename, remove, removePermanently, openDefault, parentOf } from "../lib/fileops.js";
+import { repoOf } from "../lib/git.js";
 import { icon, button } from "../lib/ui.js";
 
 const refresh = () => setShared("2code.filesRefresh", Date.now());
 
 export class FileMenu {
-  init(p) {
+  init(p, cx) {
     this.p = p;
+    // A file tab doesn't know its root: take the checkout's.
+    if (!p.root) cx.spawn(async (cx) => { this.root = (await repoOf(parentOf(p.path), p.on))?.top; cx.notify(); });
   }
 
   items() {
-    const { path, dir, root, on, space } = this.p, local = !on;
+    const { path, dir, on, space, tab } = this.p, local = !on;
+    const root = this.p.root ?? this.root ?? parentOf(path);
     const rel = path.startsWith(root + "/") ? path.slice(root.length + 1) : path;
+    if (tab) return [
+      ["copy", t("copyRelativePath"), (cx) => cx.write_to_clipboard(rel)],
+      ["copy", t("copyAbsolutePath"), (cx) => cx.write_to_clipboard(path)],
+      ...(local ? [["folder", t("reveal"), () => reveal(parentOf(path))], ["external-link", t("openDefault"), () => openDefault(path)]] : []),
+    ];
     const folder = dir ? path : parentOf(path);
     const dialog = (part, extra = {}) => () => openOverlay({ mod: "2code", kind: "dialog", width: 440, height: 220, props: { part, root, on, ...extra } });
     return [

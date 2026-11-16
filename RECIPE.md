@@ -129,7 +129,8 @@ Left to right:
 - Branch (top bar): searchable list (current, trunk from `origin/HEAD`,
   "used" when another worktree has it, ↑/↓ counts, remote-only branches);
   Enter or click runs `git switch` (`--track` for remote ones).
-- Tabs: click selects, right-click opens Herdr's tab menu, × closes. New
+- Tabs: click selects, right-click opens Herdr's tab menu (on a file tab: copy
+  relative / absolute path, Reveal, Open in Default App), × closes. New
   Terminal opens a tab in the focused folder and types `init_script`. The
   chevron lists project templates and global ones; picking one opens a tab
   named after it in its `cwd` and types `init_script` then its `commands`.
