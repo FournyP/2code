@@ -26,6 +26,10 @@
   },
   "mod:2code": {
     "cmd-s": "2code.save",
-    "ctrl-s": "2code.save"
+    "ctrl-s": "2code.save",
+    "cmd-f": "2code.findInFile",
+    "ctrl-f": "2code.findInFile",
+    "cmd-l": "2code.goToLine",
+    "ctrl-g": "2code.goToLine"
   }
 }

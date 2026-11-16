@@ -37,7 +37,8 @@ herdr-app do layout.switch --name 2code
 - **Terminal tabs**: "+ New" opens Herdr's menu (terminal or agent); the
   chevron opens terminal templates.
 - **Files**: tree with icons, git colors and a right-click menu; files open as
-  editor tabs (save, reload on disk changes, markdown preview, images).
+  editor tabs (save, find, go to line, reload on disk changes, markdown
+  preview with links to local files, images).
 - **Changes**: commit only the checked files, discard, push.
 - **Diff dialog**: changes and history, unified or split, review comments
   copied for an agent in one go.
@@ -53,13 +54,15 @@ Terminals, agent status, settings and remote machines are Herdr's.
 Active in the 2code layout (`keys.json` section `layout:2code`). `install.sh`
 adds them to your `keys.json` without replacing keys you set; Herdr then stops
 updating its defaults in that file. Herdr's keys keep working (`cmd-w`,
-`cmd-b`, `cmd-,`, `cmd-f`).
+`cmd-b`, `cmd-,`, `cmd-f` in terminals).
 
 | macOS | Linux / Windows | |
 |---|---|---|
 | `cmd-t` | `ctrl-shift-t` | new terminal (runs `init_script`) |
 | `cmd-k` | `ctrl-shift-k` | find a file |
 | `cmd-s` | `ctrl-s` | save (in a file tab) |
+| `cmd-f` | `ctrl-f` | find in file (in a file tab) |
+| `cmd-l` | `ctrl-g` | go to line (in a file tab) |
 | `cmd-g` | `ctrl-shift-g` | diff dialog |
 | `cmd-e` | `ctrl-shift-e` | toggle the Files / Changes panel |
 | `cmd-shift-e` | `ctrl-shift-j` | arrow keys in the sidebar (Esc returns) |
@@ -99,6 +102,5 @@ Global templates go in `~/2code/2code.json` (same `terminal_templates` shape).
 | `layouts/2code.json`, `mods/2code/`, `themes/` | layout, mod, themes |
 | `keys.json` | layout keys, merged by `install.sh` |
 | `RECIPE.md` | how it works, to rebuild it (Herdr's sharing format) |
-| `TODO.md` | differences from the Tauri app (中文) |
 | `scripts/install.sh` | copy into a Herdr home and check |
 | `scripts/build-file-icons.mjs` | rebuild file icons from material-icon-theme |

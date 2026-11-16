@@ -65,7 +65,7 @@ and colors live in the code.
 - **Files menu**: Open, Open in Default App, Reveal, New File / Folder,
   Rename, Copy Relative / Absolute Path, Refresh, Delete (trash via
   `/usr/bin/trash`, `gio trash` or PowerShell; if refused, the dialog says why
-  and offers Delete Permanently).
+  and offers Delete Permanently; never `rm` as a fallback).
 - **File tabs**: a Herdr tab whose only pane is the `editor` part
   (`tab.new {mod, props: {part, path, on, root}}`); `2code.editors` maps tab
   ids to files, `2code.dirty` marks unsaved. Save (section `mod:2code`) uses
@@ -74,6 +74,12 @@ and colors live in the code.
   Reload. Unsaved text is copied to `mods/2code/.cache/recovery/`; reopening
   offers Restore / Discard. × on unsaved asks Save / Don't Save / Cancel
   (answered via `2code.editorRequest`).
+  Find (`2code.findInFile`) and Go to line (`2code.goToLine`) open a bar and
+  select via `EditorState.set_selected_range` (only the focused tab's editor
+  answers); the editor's minimal scroll stops short at the bottom, so the
+  cursor first goes 8 lines below, then a frame later to the match. Markdown
+  preview links: `http(s)` / `mailto` to the browser, anything else resolved
+  against the file's folder and opened in a tab.
 - **Finder**: fuzzy search over `git ls-files --cached --others
   --exclude-standard` (else `find`).
 - **Changes**: Commit runs `git add -A -- <checked>` then `git commit -m

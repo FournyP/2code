@@ -5,22 +5,120 @@
 // preview, and images. Uses Herdr's own Editor (no CodeMirror: there's no web
 // view); files on other machines open read-only (writeTextFile is local).
 import { div, image } from "gpui-kit";
-import { v_flex, h_flex, Editor, EditorState, TextView } from "gpui-base";
+import { v_flex, h_flex, Editor, EditorState, TextView, InputState, Input } from "gpui-base";
 import { theme, settings, shared, focused, readTextFile, writeTextFile, appHome, exec, run } from "herdr";
 import * as fs from "fs/promises";
 import { t } from "../lib/i18n.js";
 import { fileIcon } from "../lib/fileIcons.js";
-import { fileKey, setDirty } from "../lib/editor.js";
+import { fileKey, setDirty, editorOf, openFile } from "../lib/editor.js";
+import { parentOf } from "../lib/fileops.js";
 import { isImage, imageSize, fit } from "../lib/changes.js";
-import { button, errText, CACHE } from "../lib/ui.js";
+import { button, icon, iconButton, errText, focusInput, CACHE } from "../lib/ui.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", jsonc: "json", json5: "json", svelte: "html", vue: "html", htm: "html", zsh: "bash", sh: "bash", yml: "yaml", py: "python", rb: "ruby", rs: "rust", md: "markdown", mdx: "markdown" };
 const MARKDOWN = /\.(md|mdx|markdown)$/i;
+// Resolves "." and ".." in an absolute path.
+const normalize = (p) => p.split("/").reduce((out, s) => (s === ".." ? out.slice(0, -1) : s === "." || (s === "" && out.length) ? out : [...out, s]), []).join("/");
 const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 
 export class EditorPart {
   command(name, cx) {
     if (name === "save") this.save(cx);
+    if ((name === "findInFile" || name === "goToLine") && this.mine()) this.openBar(name === "goToLine" ? "line" : "find", cx);
+  }
+
+  // Key commands reach every open editor; this one is the focused tab's.
+  mine() {
+    const e = editorOf(focused()?.tab);
+    return Boolean(e && fileKey(e.path, e.on) === this.key);
+  }
+
+  // Find in file / go to line: a bar under the header; the match or line is
+  // selected in the editor.
+  openBar(mode, cx) {
+    if (!this.state || (this.kind === "markdown" && this.mode === "preview")) return;
+    const sel = this.state.selected_range(), picked = this.state.value().slice(sel.start, sel.end);
+    this.barInput?.release();
+    this.bar = { mode, at: -1, matches: [], len: 0 };
+    this.barInput = InputState.new({ placeholder: t(mode === "line" ? "goToLinePlaceholder" : "findInFilePlaceholder"), value: mode === "find" && !picked.includes("\n") ? picked : "" });
+    this.barInput.on("change", (_e, cx) => { if (this.bar?.mode === "find") this.search(cx); });
+    this.barInput.on("submit", (_e, cx) => (this.bar?.mode === "line" ? this.goToLine(cx) : this.step(1, cx)));
+    focusInput(this.barInput, cx, 100);
+    if (mode === "find") this.search(cx);
+    cx.notify();
+  }
+
+  search(cx) {
+    const q = this.barInput.value().toLowerCase(), text = this.state.value().toLowerCase(), matches = [];
+    if (q) for (let i = text.indexOf(q); i >= 0 && matches.length < 10000; i = text.indexOf(q, i + q.length)) matches.push(i);
+    // Stays on the match at or after the cursor while typing.
+    const from = this.state.selected_range().start;
+    this.bar = { ...this.bar, matches, len: q.length, at: matches.length ? Math.max(0, matches.findIndex((m) => m >= from)) : -1 };
+    if (this.bar.at >= 0) this.selectMatch(cx);
+    cx.notify();
+  }
+
+  selectMatch(cx) {
+    const s = this.bar.matches[this.bar.at];
+    this.reveal(s, s + this.bar.len, cx);
+  }
+
+  // Selects a range. The editor scrolls just enough and lands a little short
+  // at the bottom, so it first scrolls to a few lines below, a frame earlier.
+  reveal(start, end, cx) {
+    const text = this.state.value();
+    let below = end;
+    for (let i = 0; i < 8 && below >= 0; i++) below = text.indexOf("\n", below + 1);
+    if (below < 0) below = text.length;
+    this.state.set_selected_range({ start: below, end: below });
+    cx.timer.after(30, () => this.state?.set_selected_range({ start, end }));
+  }
+
+  step(dir, cx) {
+    const n = this.bar.matches.length;
+    if (!n) return;
+    this.bar.at = (this.bar.at + dir + n) % n;
+    this.selectMatch(cx);
+    cx.notify();
+  }
+
+  goToLine(cx) {
+    const n = parseInt(this.barInput.value(), 10), text = this.state.value();
+    if (!(n > 0)) return;
+    let at = 0;
+    for (let line = 1; line < n; line++) { const i = text.indexOf("\n", at); if (i < 0) break; at = i + 1; }
+    this.reveal(at, at, cx);
+    this.closeBar(cx);
+  }
+
+  closeBar(cx) {
+    this.bar = null;
+    this.state?.focus();
+    cx.notify();
+  }
+
+  barRow(th) {
+    const b = this.bar, find = b.mode === "find";
+    const count = !find ? "" : b.matches.length ? `${b.at + 1} / ${b.matches.length}` : this.barInput.value() ? t("noResults") : "";
+    const btn = (id, glyph, onClick) => iconButton(id, glyph, th, onClick, { size: 24 });
+    return h_flex().h(36).flex_none().px(12).gap(6).items_center().border_b(1).border_color(th.border)
+      .on_key_down((e, cx) => { if (e.key === "escape") { cx.stop_propagation(); this.closeBar(cx); } })
+      .child(icon(find ? "search" : "chevron-right", 13).text_color(th.dim))
+      .child(div().flex_1().min_w(0).child(Input.new(this.barInput).h(28).text_size(12.5).text_color(th.foreground)))
+      .when(find, (el) => el.child(div().flex_none().text_size(11.5).text_color(th.dim).child(count))
+        .child(btn("find-prev", "chevron-up", (_e, cx) => this.step(-1, cx)))
+        .child(btn("find-next", "chevron-down", (_e, cx) => this.step(1, cx))))
+      .child(btn("bar-close", "x", (_e, cx) => this.closeBar(cx)));
+  }
+
+  // Web links go to the browser; links to files open them in a tab.
+  link(url, cx) {
+    if (/^(https?|mailto):/i.test(url)) return cx.open_url(url);
+    let rel = url.replace(/^file:\/\//i, "").split(/[?#]/)[0];
+    try { rel = decodeURIComponent(rel); } catch {}
+    if (!rel) return;
+    const path = normalize(rel.startsWith("/") ? rel : `${parentOf(this.path)}/${rel}`);
+    cx.spawn(async (cx) => openFile(cx, { path, on: this.on, root: this.root }));
   }
 
   init(p, cx) {
@@ -171,7 +269,7 @@ export class EditorPart {
   body(th) {
     const code = () => Editor.new(this.state).id(`ed-${this.id}`).absolute().inset_0();
     const preview = () => div().id(`md-${this.id}`).absolute().inset_0().p(20).overflow_y_scrollbar()
-      .child(TextView.markdown(`mdv-${this.id}`, this.state.value()).selectable().on_link_click((url, cx) => cx.open_url(url)));
+      .child(TextView.markdown(`mdv-${this.id}`, this.state.value()).selectable().on_link_click((url, cx) => this.link(url, cx)));
     const box = (child) => div().flex_1().min_w(0).min_h(0).relative().child(child);
     if (this.kind === "text") return box(code());
     if (this.kind === "markdown") {
@@ -208,6 +306,7 @@ export class EditorPart {
           .child(seg("edit", t("mdEdit"))).child(seg("split", t("mdSplit"))).child(seg("preview", t("mdPreview")))))
         .when(Boolean(this.state) && !this.readonly, (el) => el.child(button("save", th, this.saving ? t("saving") : t("save"), (_e, cx) => this.save(cx), { disabled: !this.dirty || this.saving }))))
       .when(Boolean(this.banner), (el) => el.child(this.bannerRow(th)))
+      .when(Boolean(this.bar), (el) => el.child(this.barRow(th)))
       .child(this.body(th));
   }
 }
