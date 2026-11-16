@@ -1,71 +1,43 @@
 # TODO：herdr 版 2code 与旧版（Tauri）的差距
 
-旧版代码在 [`legacy-tauri-app`](https://github.com/AkaraChen/2code/tree/legacy-tauri-app) 分支。已经实现的功能见 [README](README.md)，实现细节见 [RECIPE](RECIPE.md)。
+旧版在 [`legacy-tauri-app`](https://github.com/AkaraChen/2code/tree/legacy-tauri-app) 分支，功能已迁移完或确认砍掉。已有功能见 [README](README.md)，实现见 [RECIPE](RECIPE.md)。
 
-旧版的功能都已迁移完，或者已确认砍掉。下面只列还没完成的事、做不了的事，以及和旧版不一样的地方。
+## 一、仓库所有者
 
-## 一、需要仓库所有者处理
+- [ ] （可选）在 GitHub Releases 发迁移公告。旧版自动更新读 “latest” release 的 `latest.json`，新 release 不要标 latest。
+- 没有 LICENSE（作者惯例）；要让别人合法复用需补一个。第三方代码已在 `mods/2code/NOTICE` 注明：Herdr mod（Apache-2.0）、Lucide（ISC）、material-icon-theme（MIT）。
 
-- [ ] （可选）在 GitHub Releases 上给旧桌面版用户发迁移公告。旧版的自动更新会读取“latest” release 里的 `latest.json`，所以新 release 不要标成 latest，否则旧版检查更新时会失败。
+## 二、受 Herdr 限制
 
-已完成：
-- [x] Netlify 的生产分支已改为 `main`，官网跟着 `main` 部署。
-- [x] #494：已停用的 `dev` 跟上了 `main`，`dev` 原来的提交都保留在历史里和 `legacy-tauri-app` 上。
-- [x] 已关闭面向已删除目录的过时 Dependabot PR（#477–#486）。
+- agent 状态：只认 agent 自己发的 OSC 7501，不上报的没有状态点（旧版的屏幕文字识别用不上）。
+- 终端链接由 Herdr 用系统默认程序打开；mod 拿不到点击事件，不能选浏览器，也不能在编辑器打开 `路径:行:列`。
+- ⌘= / ⌘- 是整体缩放，不能只缩放终端。
+- 没有 WebView：不能预览 PDF、Office、压缩包。
+- Herdr 编辑器：文件最大 1 MiB；无查找替换、跳转到行、LSP；TypeScript 按 JS 高亮。
+- 未保存提示只拦 2code tab 上的 ×；⌘W、菜单关闭不提示，改动存为恢复副本。
+- Herdr 自己的界面（设置、worktree 对话框、toast）只有英文。
+- Diff 点击不带修饰键，所以用“点一行再点另一行”选范围。
+- 没有回收站的挂载点（如 `/tmp`）：对话框说明原因并提供“永久删除”。
+- Herdr 只发布 Apple Silicon 版，Intel Mac 需自行编译。
+- layout 不自动更新，需重新安装。
 
-许可证：作者名下的其他仓库都没有 LICENSE 文件，这次也按惯例没有加。如果希望别人能合法复用 2code 的代码，需要补一个。借用的第三方代码已在 `mods/2code/NOTICE` 中注明：Herdr 的 mod（Apache-2.0）、Lucide 图标（ISC）、material-icon-theme（MIT）。
+## 三、与旧版不同（已接受）
 
-## 二、受 Herdr 限制，做不了或只能做一部分
+- 新建 worktree：没有拼音分支名和自动起名（`pr/<city>-xxxx`）；固定在 `~/.herdr/worktrees/<仓库>/<分支>`，`worktree_dir` 不生效。
+- 删除 worktree：保留分支；从 Herdr 菜单删除不执行 `teardown_script`。
+- `init_script` 只在模板和 ⌘T / Ctrl+Shift+T 时执行；“+ New” 等其他方式开的终端不执行。
+- 关掉 worktree 的最后一个 tab 会关闭其 space，侧栏显示为“未打开”。
+- 没有首页和首次使用引导。
+- 顶栏按钮不能排序或隐藏，改为“用…打开”菜单。
+- 设置用 Herdr 设置页（字体、主题、提示音、默认 shell）；语言只跟随 `LC_ALL` / `LC_MESSAGES` / `LANG`。
+- 快捷键：Linux / Windows 上 Ctrl+K / G / E 改为 Ctrl+Shift；在 2code layout 中 Ctrl+Shift+E 覆盖 Herdr 向下分屏，Ctrl+Shift+K 覆盖 picker；Linux 上 Alt+←/→ 覆盖 pane 切换；安装会改 `keys.json`，之后 Herdr 不再更新其默认快捷键。
+- 全局配置在 `~/2code/2code.json`（非隐藏目录）。
 
-- agent 状态检测：旧版 19 套屏幕文字识别规则用不上了，herdr-core 只认程序自己发的 OSC 7501。不上报状态的 agent 不会显示状态点。
-- 终端链接由 Herdr 自己处理，Ctrl/⌘+点击直接用系统默认程序打开。旧版的“选择用哪个浏览器打开”，以及 `路径:行:列` 在 2code 编辑器里打开，都做不到，因为 mod 拿不到链接点击事件。
-- 字号：⌘= / ⌘- 是 Herdr 的整体缩放（界面和终端一起），不能只缩放终端。
-- PDF、Office、压缩包预览：没有 WebView，做不了。
-- 编辑器用的是 Herdr 内置的 Editor：
-  - 文件最大 1 MiB；
-  - 没有查找替换、没有跳转到行、没有 LSP；
-  - TypeScript 只能按 JS 高亮。
-- 未保存提示只拦得住 2code 自己 tab 上的 ×。用 Herdr 的方式关闭（⌘W、菜单）不会提示，改动会存成恢复副本，下次打开该文件时可以恢复。
-- Herdr 自己的界面（设置页、worktree 对话框、toast）只有英文。
-- Diff 里的 Shift 扩选：虚拟列表的点击事件不带修饰键，所以加了“点一行再点另一行选中一段”作为兜底。
-- 回收站：没有回收站的挂载点（比如 `/tmp`）无法移到回收站，对话框会说明原因，并提供“永久删除”。
-- Intel Mac：Herdr 只发布 Apple Silicon 版，Intel Mac 需要自己从源码编译。
-- 2code layout 本身不会自动更新（Herdr 本体会），更新 layout 要重新安装。
+## 四、待验证
 
-## 三、和旧版不一样、目前接受的行为
+已验证：Linux + Xvfb、中文环境（`LANG=zh_CN.UTF-8`）、`2code-dark`、macOS 红绿灯位置（#499）。
 
-- 新建 worktree：
-  - 没有拼音分支名，也不再自动起名（`pr/<city>-xxxx`）；
-  - worktree 固定放在 `~/.herdr/worktrees/<仓库>/<分支>`，`worktree_dir` 不再生效。
-- 删除 worktree：
-  - 分支会保留，不再删除；
-  - 如果从 Herdr 自己的菜单删除，不会执行 `teardown_script`。
-- `init_script` 只在三种情况下执行：2code 的“新建终端”、模板、⌘T / Ctrl+Shift+T。用 Herdr 其他方式开的终端不会执行。
-- 一个打开的 worktree 至少要有一个 tab。关掉最后一个 tab，它对应的 space 也会关掉，worktree 在侧栏里变成“未打开”状态。
-- 没有首页，也没有首次使用引导。
-- 顶栏按钮不能再自定义排序和显示/隐藏，换成了一个“用…打开”下拉菜单。
-- 设置统一用 Herdr 的设置页（字体、主题、提示音、默认 shell）。语言只跟随系统环境变量 `LC_ALL` / `LC_MESSAGES` / `LANG`，没有切换器。
-- 快捷键：
-  - Linux / Windows 上 2code 原来的 Ctrl+K / G / E 改成了 Ctrl+Shift 组合；
-  - 在 2code layout 里，Ctrl+Shift+E 盖掉了 Herdr 的“向下分屏”，Ctrl+Shift+K 盖掉了 Herdr 的 picker；
-  - Linux 上 Alt+←/→ 盖掉了 Herdr 的 pane 切换；
-  - 安装时会改动用户的 `keys.json`，改动后 Herdr 不再自动更新其中的默认快捷键。
-- 全局配置放在 `~/2code/2code.json`（不是隐藏目录）。
-
-## 四、待验证（只在 Linux + Xvfb 下测过）
-
-已验证：中文环境（`LANG=zh_CN.UTF-8`）和深色主题 `2code-dark`。
-
-- [ ] macOS 真机：
-  - [ ] 红绿灯和左上角品牌区的位置；
-  - [ ] 在 Finder 中显示、用默认应用打开、`/usr/bin/trash`；
-  - [ ] “用…打开”能否找到 `/Applications` 下的应用；
-  - [ ] 登录 shell 没有设置 `LANG` 时，回退到英文是否符合预期。
-- [ ] 真机上 Shift 扩选能不能用。
-- [ ] Windows：setup、teardown、模板都依赖 `sh`；“在文件管理器中显示”走 `explorer.exe`，回收站走 PowerShell。
-- [ ] 远程机器（Herdr 的 machine）上的项目：
-  - [ ] 新建和删除 worktree；
-  - [ ] 模板（用 `hc send` 输入命令）；
-  - [ ] Changes 和 Diff 对话框；
-  - [ ] 远程文件以只读方式打开；
-  - [ ] 项目设置在远程项目上是只读的。
+- [ ] macOS 真机：在 Finder 中显示、默认应用打开、`/usr/bin/trash`；“用…打开”能否找到 `/Applications` 下的应用；登录 shell 无 `LANG` 时回退英文。
+- [ ] 真机上 Shift 扩选。
+- [ ] Windows：setup、teardown、模板依赖 `sh`；显示走 `explorer.exe`，回收站走 PowerShell。
+- [ ] 远程机器上的项目：新建/删除 worktree、模板（`hc send`）、Changes 和 Diff、远程文件只读打开、项目设置只读。

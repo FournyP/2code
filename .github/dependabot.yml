@@ -1,17 +1,9 @@
 version: 2
 updates:
-  - package-ecosystem: bun
-    directory: /website
-    schedule:
-      interval: weekly
-      day: monday
-      time: "09:00"
-      timezone: Asia/Shanghai
-
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
       day: monday
       time: "09:00"
-      timezone: Asia/Shanghai
+      timezone: Europe/Paris
