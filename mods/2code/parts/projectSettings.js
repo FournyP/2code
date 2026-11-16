@@ -6,7 +6,7 @@ import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui
 import { theme, readTextFile, writeTextFile, exec, window } from "herdr";
 import { t } from "../lib/i18n.js";
 import { globalConfigPath } from "../lib/config.js";
-import { button, icon, closeSelf, errText, MONO } from "../lib/ui.js";
+import { button, icon, iconButton, closeSelf, errText, MONO } from "../lib/ui.js";
 
 const lines = (text) => text.split("\n").map((l) => l.trim()).filter(Boolean);
 const SCRIPTS = [["setup_script", "setupScript", "setupScriptDesc"], ["teardown_script", "teardownScript", "teardownScriptDesc"], ["init_script", "initScript", "initScriptDesc"]];
@@ -127,10 +127,7 @@ export class ProjectSettings {
         .child(h_flex().gap(8).items_center()
           .child(div().flex_1().child(this.field(th, Input.new(r.name).h(30).text_size(12.5).text_color(th.foreground))))
           .when(withCwd, (el) => el.child(div().w(170).child(this.field(th, Input.new(r.cwd).h(30).text_size(12.5).text_color(th.foreground), { mono: true }))))
-          .child(div().id(`tpl-del-${scope}-${i}`).size(26).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(th.dim)
-            .hover((s) => s.bg(th.hover).text_color(th.ansi1))
-            .on_click((_e, cx) => { rows.splice(i, 1); cx.notify(); })
-            .child(icon("x", 13))))
+          .child(iconButton(`tpl-del-${scope}-${i}`, "x", th, (_e, cx) => { rows.splice(i, 1); cx.notify(); }, { size: 26, hover: th.ansi1 })))
         .child(div().text_size(11.5).text_color(th.dim).child(t("templateCommandsDesc")))
         .child(this.field(th, Textarea.new(r.commands).py(6).text_size(12).text_color(th.foreground), { mono: true }))),
       h_flex().child(button(`tpl-add-${scope}`, th, t("addTemplate"), (_e, cx) => { rows.push(this.row()); cx.notify(); })),

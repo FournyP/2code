@@ -8,8 +8,8 @@ import { theme, settings, shared, openOverlay } from "herdr";
 import { t } from "../lib/i18n.js";
 import { git, here, repoOf } from "../lib/git.js";
 import { readChanges, fileDiff, commitFileDiff, unifiedRows, splitRows, commit, discard, ahead, push, history, commitFiles, isImage, imageVersions, imageSize, fit, reviewList, setReviewList } from "../lib/changes.js";
-import { icon, closeSelf, errText, MONO } from "../lib/ui.js";
-import { badge, checkbox } from "./changes.js";
+import { icon, iconButton, closeSelf, errText, MONO } from "../lib/ui.js";
+import { badge, checkbox, allState, discardButton, commitBox } from "./changes.js";
 
 const ROW = 20;
 
@@ -114,7 +114,7 @@ export class Diff {
     if (!summary || !picked.length) return;
     const body = this.body.value().trim(), all = picked.length === this.files.length;
     this.act(cx, async () => {
-      await commit(this.root, this.on, picked.flatMap((f) => (f.from ? [f.from, f.path] : [f.path])), all, summary, body);
+      await commit(this.root, this.on, picked, all, summary, body);
       this.summary.set_value(""); this.body.set_value(""); this.excluded = new Set(); this.showFile(null);
     }, "commitFailed");
   }
@@ -221,8 +221,7 @@ export class Diff {
           .child(Input.new(this.comment).h(30).text_size(12.5).text_color(th.foreground)))
         .child(div().id("add-comment").h(30).px(12).flex().items_center().rounded(6).bg(th.solid).text_color(th.solid_foreground).text_size(12).cursor_pointer()
           .on_click((_e, cx) => this.addComment(cx)).child(t("addComment")))
-        .child(div().id("clear-sel").size(24).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(th.dim)
-          .on_click((_e, cx) => { this.sel = null; cx.notify(); }).child(icon("x", 12)))));
+        .child(iconButton("clear-sel", "x", th, (_e, cx) => { this.sel = null; cx.notify(); }, { size: 24, iconSize: 12 }))));
   }
 
   fileRow(f, th, { selectable }) {
@@ -236,16 +235,13 @@ export class Diff {
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(th.dim).child(f.from ? `← ${f.from}` : parts.join("/")))
       .child(div().flex_none().text_size(11).text_color(th.ansi2).child(f.add ? `+${f.add}` : ""))
       .child(div().flex_none().text_size(11).text_color(th.ansi1).child(f.del ? `-${f.del}` : ""))
-      .when(selectable && (this.hoverRow === f.path || arming), (el) => el.child(div().id(`d-${f.path}`).h(18).px(arming ? 6 : 3).flex().items_center().rounded(4)
-        .text_size(11).text_color(arming ? th.ansi1 : th.dim).when(arming, (e) => e.bg(th.ansi1 + "14")).hover((s) => s.text_color(th.ansi1)).tooltip(t("discardChanges"))
-        .on_click((_e, cx) => { cx.stop_propagation(); this.doDiscard(f, cx); })
-        .child(arming ? t("discardConfirm") : icon("undo", 12))))
+      .when(selectable && (this.hoverRow === f.path || arming), (el) => el.child(discardButton(`d-${f.path}`, th, arming, (cx) => this.doDiscard(f, cx))))
       .child(badge(f.status, th));
   }
 
   changesList(th) {
     const picked = this.files.filter((f) => !this.excluded.has(f.path)).length;
-    const all = picked === this.files.length ? true : picked === 0 ? false : "some";
+    const all = allState(picked, this.files.length);
     const ok = Boolean(this.summary.value().trim() && picked && !this.busy);
     const field = (child) => div().w_full().px(10).rounded(6).border_1().border_color(th.input).bg(th.background).on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(child);
     return v_flex().size_full()
@@ -254,23 +250,17 @@ export class Diff {
         .child(div().text_size(12).text_color(th.muted).child(t("changedFiles", { count: this.files.length }))))
       .child(v_flex().id("dlg-files").flex_1().min_h(0).py(4).overflow_y_scrollbar().children(this.files.map((f) => this.fileRow(f, th, { selectable: true })))
         .when(!this.files.length, (el) => el.child(div().p(10).text_size(12).text_color(th.dim).child(t("noChanges")))))
-      .child(v_flex().flex_none().p(10).gap(6).border_t(1).border_color(th.border)
-        .child(div().text_size(11).font_semibold().text_color(th.dim).child(t("commitSection").toUpperCase()))
-        .child(field(Input.new(this.summary).h(30).text_size(12).text_color(th.foreground)))
-        .child(field(Textarea.new(this.body).py(6).text_size(12).text_color(th.foreground)))
-        .child(h_flex().gap(8).items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(th.dim).child(this.files.length ? t("includedCount", { included: picked, total: this.files.length }) : ""))
-          .when(this.ahead.count > 0, (el) => el.child(div().id("dlg-push").h(30).px(12).flex().items_center().gap(5).rounded(6).border_1().border_color(th.input).cursor_pointer()
-            .text_size(12).hover((s) => s.bg(th.hover)).on_click((_e, cx) => this.doPush(cx)).child(icon("arrow-up", 13)).child(t("pushCount", { count: this.ahead.count }))))
-          .child(div().id("dlg-commit").h(30).px(14).flex().items_center().rounded(6).bg(ok ? th.solid : th.raised).text_color(ok ? th.solid_foreground : th.dim).text_size(12)
-            .when(ok, (e) => e.cursor_pointer()).on_click((_e, cx) => this.doCommit(cx)).child(this.busy ? t("committing") : t("commit")))));
+      .child(commitBox(th, {
+        fields: [field(Input.new(this.summary).h(30).text_size(12).text_color(th.foreground)), field(Textarea.new(this.body).py(6).text_size(12).text_color(th.foreground))],
+        picked, total: this.files.length, ahead: this.ahead.count, enabled: ok, busy: this.busy,
+        onPush: (cx) => this.doPush(cx), onCommit: (cx) => this.doCommit(cx),
+      }));
   }
 
   historyList(th) {
     if (this.commit) return v_flex().size_full()
       .child(h_flex().h(36).flex_none().px(8).gap(6).items_center().border_b(1).border_color(th.border)
-        .child(div().id("back").size(22).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(th.dim).hover((s) => s.bg(th.hover))
-          .on_click((_e, cx) => { this.commit = null; this.commitFiles = []; this.showFile(null); cx.notify(); }).child(icon("chevron-left", 14)))
+        .child(iconButton("back", "chevron-left", th, (_e, cx) => { this.commit = null; this.commitFiles = []; this.showFile(null); cx.notify(); }, { iconSize: 14 }))
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(th.muted).child(`${this.commit.short} ${this.commit.subject}`)))
       .child(v_flex().id("dlg-commit-files").flex_1().min_h(0).py(4).overflow_y_scrollbar().children(this.commitFiles.map((f) => this.fileRow(f, th, { selectable: false })))
         .when(!this.commitFiles.length, (el) => el.child(div().p(10).text_size(12).text_color(th.dim).child(t("noFileChanges")))));
@@ -305,8 +295,7 @@ export class Diff {
         .child(h_flex().p(3).gap(2).rounded(7).bg(th.raised)
           .child(seg("v-unified", t("unified"), this.view === "unified", (_e, cx) => { this.setView("unified"); cx.notify(); }, "rows"))
           .child(seg("v-split", t("split"), this.view === "split", (_e, cx) => { this.setView("split"); cx.notify(); }, "columns")))
-        .child(div().id("close").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(th.dim).hover((s) => s.bg(th.hover))
-          .on_click(closeSelf).child(icon("x", 14))))
+        .child(iconButton("close", "x", th, closeSelf, { size: 26, iconSize: 14 })))
       .child(h_flex().flex_1().min_h(0)
         .child(v_flex().w(360).flex_none().h_full().border_r(1).border_color(th.border)
           .child(this.tab === "changes" ? this.changesList(th) : this.historyList(th)))

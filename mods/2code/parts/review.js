@@ -4,7 +4,7 @@ import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { theme, shared } from "herdr";
 import { t } from "../lib/i18n.js";
-import { button, icon, closeSelf, MONO } from "../lib/ui.js";
+import { button, icon, iconButton, closeSelf, MONO } from "../lib/ui.js";
 import { reviewList, setReviewList } from "../lib/changes.js";
 
 const block = (text) => String(text ?? "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
@@ -53,10 +53,7 @@ export class Review {
         .children(list.map((c, i) => v_flex().id(`rc-${i}`).p(10).gap(6).rounded(8).border_1().border_color(th.border)
           .child(h_flex().gap(8).items_center()
             .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().child(`${c.file}:${c.range}`))
-            .child(div().id(`rc-del-${i}`).size(22).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(th.dim)
-              .hover((s) => s.bg(th.hover).text_color(th.ansi1))
-              .on_click((_e, cx) => { setReviewList(this.root, list.filter((_x, j) => j !== i)); cx.notify(); })
-              .child(icon("x", 12))))
+            .child(iconButton(`rc-del-${i}`, "x", th, (_e, cx) => { setReviewList(this.root, list.filter((_x, j) => j !== i)); cx.notify(); }, { iconSize: 12, hover: th.ansi1 })))
           .child(div().p(8).rounded(6).bg(th.raised).font_family(MONO).text_size(11.5).text_color(th.muted)
             .children(block(c.code).split("\n").slice(0, 12).map((l) => div().truncate().child(l || " "))))
           .child(div().child(c.body))))

@@ -117,7 +117,9 @@ export function splitRows(rows) {
 }
 
 // Commits the given files only (all of them: plain add -A + commit).
-export async function commit(root, on, paths, all, summary, body) {
+// Commits the picked files ([{ path, from? }]), or everything when `all`.
+export async function commit(root, on, files, all, summary, body) {
+  const paths = files.flatMap((f) => (f.from ? [f.from, f.path] : [f.path]));
   const message = ["-m", summary, ...(body ? ["-m", body] : [])];
   const steps = all ? [["add", "-A"], ["commit", ...message]] : [["add", "-A", "--", ...paths], ["commit", ...message, "--", ...paths]];
   for (const args of steps) {

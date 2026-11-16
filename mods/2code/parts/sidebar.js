@@ -12,7 +12,7 @@ import { readProjectConfig, scriptArgv } from "../lib/config.js";
 import { place, repoOf } from "../lib/git.js";
 import { savedProjects, addProject, projectKey, projectName, checkouts, childRepos } from "../lib/projects.js";
 import { githubOwner, githubAvatar } from "../lib/os.js";
-import { icon, stop, dot, worst, find } from "../lib/ui.js";
+import { icon, iconButton, stop, dot, worst, find } from "../lib/ui.js";
 
 const RAIL = 160; // narrower than this, the sidebar draws only project tiles
 
@@ -219,10 +219,7 @@ export class Sidebar {
       .child(div().flex_1().min_w(0).truncate().text_color(th.foreground).child(p.name))
       // The project's dot sums up its worktrees, so it shows only while they're folded away.
       .when(!open && !hovered, (el) => el.children([dot(status, th)].filter(Boolean)))
-      .when(hovered && !group, (el) => el.child(div().id(`profile-new-${p.key}`).size(20).flex().items_center().justify_center().rounded(5)
-        .text_color(th.dim).hover((s) => s.bg(th.raised).text_color(th.foreground))
-        .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async () => openNewProfile(p)); })
-        .child(icon("plus", 13))))
+      .when(hovered && !group, (el) => el.child(iconButton(`profile-new-${p.key}`, "plus", th, (_e, cx) => { cx.stop_propagation(); cx.spawn(async () => openNewProfile(p)); }, { size: 20, hoverBg: th.raised })))
       .child(div().id(`project-caret-${p.key}`).size(18).flex().items_center().justify_center().text_color(th.dim)
         .on_click((_e, cx) => { cx.stop_propagation(); this.toggle(p.key); cx.notify(); })
         .child(icon(open ? "chevron-down" : "chevron-right", 13)));
@@ -323,9 +320,7 @@ export class Sidebar {
       .on_size_change((size, cx) => { if (Math.abs(size.width - this.width) >= 1) { this.width = size.width; cx.notify(); } })
       .child(h_flex().h(30).px(narrow ? 0 : 16).items_center().when(narrow, (el) => el.justify_center())
         .when(!narrow, (el) => el.justify_between().child(div().text_size(12).text_color(th.dim).child(t("projects"))))
-        .child(div().id("project-new").size(22).flex().items_center().justify_center().rounded(5).text_color(th.dim)
-          .hover((s) => s.bg(th.hover).text_color(th.foreground)).on_click(() => this.addProject())
-          .child(icon("plus", 14))))
+        .child(iconButton("project-new", "plus", th, () => this.addProject(), { iconSize: 14 })))
       .child(narrow ? this.rail(projects, th) : v_flex().id("project-list").flex_1().min_h(0).px(8).gap(1).overflow_y_scrollbar()
         .children(projects.flatMap((p) => this.rows(p, th)))
         .when(!projects.length, (el) => el.child(div().p(8).text_color(th.dim).child(t("noProjects")))));

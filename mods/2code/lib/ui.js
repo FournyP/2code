@@ -29,6 +29,12 @@ export function find(node, id) {
   return null;
 }
 
+// A square icon button (`hover` colors the glyph on hover).
+export function iconButton(id, glyph, th, onClick, { size = 22, iconSize = 13, hover = th.foreground, hoverBg = th.hover } = {}) {
+  return div().id(id).size(size).flex_none().flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(th.dim)
+    .hover((s) => s.bg(hoverBg).text_color(hover)).on_click(onClick).child(icon(glyph, iconSize));
+}
+
 // A plain button: `label` is text or an element.
 export function button(id, t, label, onClick, { primary = false, disabled = false } = {}) {
   return div().id(id).h(30).px(12).flex().items_center().justify_center().rounded(6).text_size(12.5)

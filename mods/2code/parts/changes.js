@@ -8,7 +8,7 @@ import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, Scrollbar, 
 import { exec, watchFolder, theme, settings, shared, openOverlay } from "herdr";
 import { t, locale } from "../lib/i18n.js";
 import { readChanges, fileDiff, unifiedRows, commit, discard, ahead, push } from "../lib/changes.js";
-import { ICON, icon, errText, MONO } from "../lib/ui.js";
+import { ICON, icon, iconButton, errText, MONO } from "../lib/ui.js";
 import { READ, location, repoOf } from "../lib/git.js";
 import { childRepos } from "../lib/projects.js";
 
@@ -30,6 +30,32 @@ export function checkbox(id, state, th, onClick) {
     .on_click((_e, cx) => { cx.stop_propagation(); onClick(cx); })
     .when(state === true, (el) => el.child(svg(`${ICON}/check.svg`).size(11)))
     .when(state === "some", (el) => el.child(div().w(7).h(2).rounded(1).bg(th.solid_foreground)));
+}
+
+// The include-all checkbox's state.
+export const allState = (picked, total) => (picked === total ? true : picked === 0 ? false : "some");
+
+// A file row's discard button: the first click arms it, the second discards.
+export function discardButton(id, th, arming, onClick) {
+  return div().id(id).h(18).px(arming ? 6 : 3).flex().items_center().justify_center().rounded(4)
+    .text_size(11).text_color(arming ? th.ansi1 : th.dim).when(arming, (e) => e.bg(th.ansi1 + "14"))
+    .hover((s) => s.text_color(th.ansi1)).tooltip(t("discardChanges"))
+    .on_click((_e, cx) => { cx.stop_propagation(); onClick(cx); })
+    .child(arming ? t("discardConfirm") : icon("undo", 12));
+}
+
+// The commit box: fields, then "n of m included", push and commit.
+export function commitBox(th, { fields, picked, total, ahead, enabled, busy, onPush, onCommit }) {
+  return v_flex().flex_none().p(10).gap(6).border_t(1).border_color(th.border)
+    .child(div().text_size(11).font_semibold().text_color(th.dim).child(t("commitSection").toUpperCase()))
+    .children(fields)
+    .child(h_flex().pt(2).gap(8).items_center()
+      .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(th.dim).child(total ? t("includedCount", { included: picked, total }) : ""))
+      .when(ahead > 0, (el) => el.child(div().id("push").h(30).px(12).flex().items_center().gap(5).rounded(6).border_1().border_color(th.input).cursor_pointer()
+        .text_size(12).hover((s) => s.bg(th.hover)).on_click((_e, cx) => onPush(cx))
+        .child(icon("arrow-up", 13)).child(t("pushCount", { count: ahead }))))
+      .child(div().id("commit").h(30).px(14).flex().items_center().rounded(6).bg(enabled ? th.solid : th.raised).text_color(enabled ? th.solid_foreground : th.dim).text_size(12)
+        .when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => onCommit(cx)).child(busy ? t("committing") : t("commit"))));
 }
 
 export class Changes {
@@ -184,13 +210,13 @@ export class Changes {
   }
 
   // Runs a git change, then refreshes; failures show under the list.
-  act(cx, work) {
+  act(cx, work, failKey) {
     if (this.busy || !this.root) return;
     const context = this.context;
     this.busy = true; this.note = null;
     cx.spawn(async (cx) => {
       try { await work(); }
-      catch (e) { if (key() === context) this.note = errText(e); }
+      catch (e) { if (key() === context) this.note = t(failKey, { error: errText(e) }); }
       finally { this.busy = false; this.refresh(cx); cx.notify(); }
     });
     cx.notify();
@@ -201,10 +227,9 @@ export class Changes {
     if (!summary || !picked.length || this.loading || this.context !== key()) return;
     const body = this.bodyState.value().trim(), all = picked.length === this.files.length, root = this.root, on = this.on;
     this.act(cx, async () => {
-      try { await commit(root, on, picked.flatMap((f) => (f.from ? [f.from, f.path] : [f.path])), all, summary, body); }
-      catch (e) { throw new Error(t("commitFailed", { error: errText(e) })); }
+      await commit(root, on, picked, all, summary, body);
       this.summary = ""; this.summaryState.set_value(""); this.bodyState.set_value(""); this.excluded = new Set();
-    });
+    }, "commitFailed");
   }
 
   // Discarding asks once: the first click arms the button, the second discards.
@@ -212,18 +237,12 @@ export class Changes {
     if (this.confirm !== f.path) { this.confirm = f.path; cx.notify(); return; }
     this.confirm = null;
     const root = this.root, on = this.on, hasHead = this.hasHead;
-    this.act(cx, async () => {
-      try { await discard(root, on, f, hasHead); }
-      catch (e) { throw new Error(t("discardFailed", { error: errText(e) })); }
-    });
+    this.act(cx, () => discard(root, on, f, hasHead), "discardFailed");
   }
 
   push(cx) {
     const root = this.root, on = this.on, upstream = this.ahead.upstream;
-    this.act(cx, async () => {
-      try { await push(root, on, upstream); }
-      catch (e) { throw new Error(t("pushFailed", { error: errText(e) })); }
-    });
+    this.act(cx, () => push(root, on, upstream), "pushFailed");
   }
 
   diffRow(r, th) {
@@ -246,11 +265,7 @@ export class Changes {
       .child(checkbox(`include-${f.path}`, !this.excluded.has(f.path), th, (cx) => this.toggle(f.path, cx)))
       .child(div().flex_none().max_w(150).truncate().text_color(th.foreground).child(name))
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(th.dim).child(f.from ? `← ${f.from}` : parts.join("/")))
-      .when(hovered || arming, (el) => el.child(div().id(`discard-${f.path}`).h(18).px(arming ? 6 : 3).flex().items_center().justify_center().rounded(4)
-        .text_size(11).text_color(arming ? th.ansi1 : th.dim).when(arming, (e) => e.bg(th.ansi1 + "14"))
-        .hover((s) => s.text_color(th.ansi1)).tooltip(t("discardChanges"))
-        .on_click((_e, cx) => { cx.stop_propagation(); this.discard(f, cx); })
-        .child(arming ? t("discardConfirm") : icon("undo", 12))))
+      .when(hovered || arming, (el) => el.child(discardButton(`discard-${f.path}`, th, arming, (cx) => this.discard(f, cx))))
       .child(badge(f.status, th));
   }
 
@@ -261,7 +276,7 @@ export class Changes {
     if (locale() !== this.inputLocale) this.makeInputs();
     const add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
     const picked = this.included().length;
-    const all = picked === this.files.length ? true : picked === 0 ? false : "some";
+    const all = allState(picked, this.files.length);
     const enabled = Boolean(this.summary?.trim() && picked && this.root && !this.busy && !this.loading);
     const label = (text) => div().text_size(12).text_color(th.muted).child(text);
     const field = (id, focused, child) => div().id(id).w_full().px(10).rounded(6).border_1().border_color(focused ? th.accent : th.input).bg(th.background).cursor_text()
@@ -271,10 +286,7 @@ export class Changes {
         .when(this.files.length > 0, (el) => el.child(checkbox("include-all", all, th, (cx) => this.toggleAll(cx))))
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(th.muted).child(t("changedFiles", { count: this.files.length })))
         .child(div().text_size(11).text_color(th.ansi2).child(`+${add}`)).child(div().text_size(11).text_color(th.ansi1).child(`-${del}`))
-        .child(div().id("open-diff").size(22).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(th.dim)
-          .hover((s) => s.bg(th.hover).text_color(th.foreground))
-          .on_click(() => openDiffDialog())
-          .child(icon("maximize", 13))))
+        .child(iconButton("open-diff", "maximize", th, () => openDiffDialog())))
       .when(Boolean(this.repos), (el) => el.child(v_flex().id("changes-repos").flex_none().max_h(146).overflow_y_scroll().py(4).border_b(1).border_color(th.border)
         .children(this.repos.map((r) => this.repoRow(r, th)))))
       // overflow_y_scrollbar() wraps the list, so its flex sizing never reached the panel's layout.
@@ -289,19 +301,16 @@ export class Changes {
             (range) => this.rows.slice(range.start, range.end).map((row) => this.diffRow(row, th))).size_full())))
         .child(Scrollbar.vertical("changes-diff").viewport_from_layout().absolute().inset_0())))
       .when(Boolean(this.note), (e) => e.child(div().px(12).py(6).text_size(11).text_color(th.ansi1).child(this.note)))
-      .child(v_flex().flex_none().p(10).gap(6).border_t(1).border_color(th.border)
-        .child(div().text_size(11).font_semibold().text_color(th.dim).child(t("commitSection").toUpperCase()))
-        .child(label(t("summary")))
-        .child(field("commit-summary", this.focus === "summary", Input.new(this.summaryState).h(30).text_size(12).text_color(th.foreground)))
-        .child(label(t("description")))
-        .child(field("commit-body", this.focus === "body", Textarea.new(this.bodyState).py(6).text_size(12).text_color(th.foreground)))
-        .child(h_flex().pt(2).gap(8).items_center()
-          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(th.dim).child(this.files.length ? t("includedCount", { included: picked, total: this.files.length }) : ""))
-          .when(this.ahead.count > 0, (el) => el.child(div().id("push").h(30).px(12).flex().items_center().gap(5).rounded(6).border_1().border_color(th.input).cursor_pointer()
-            .text_size(12).hover((s) => s.bg(th.hover)).on_click((_e, cx) => this.push(cx))
-            .child(icon("arrow-up", 13)).child(t("pushCount", { count: this.ahead.count }))))
-          .child(div().id("commit").h(30).px(14).flex().items_center().rounded(6).bg(enabled ? th.solid : th.raised).text_color(enabled ? th.solid_foreground : th.dim).text_size(12)
-            .when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(this.busy ? t("committing") : t("commit")))));
+      .child(commitBox(th, {
+        fields: [
+          label(t("summary")),
+          field("commit-summary", this.focus === "summary", Input.new(this.summaryState).h(30).text_size(12).text_color(th.foreground)),
+          label(t("description")),
+          field("commit-body", this.focus === "body", Textarea.new(this.bodyState).py(6).text_size(12).text_color(th.foreground)),
+        ],
+        picked, total: this.files.length, ahead: this.ahead.count, enabled, busy: this.busy,
+        onPush: (cx) => this.push(cx), onCommit: (cx) => this.commit(cx),
+      }));
   }
 }
 
