@@ -73,7 +73,8 @@ export class Files {
     const { cwd, on } = location(), next = key();
     if (next !== this.context?.key) {
       if (this.context) this.saved.set(this.context.key, { folders: this.folders });
-      this.watchHandle?.cancel(); this.watchHandle = null;
+      // Older Herdr returns a plain promise: no cancel.
+      this.watchHandle?.cancel?.(); this.watchHandle = null;
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.dirty = new Set(); this.ignored = new Set(); this.watched = null; this.error = null; this.limited = false;

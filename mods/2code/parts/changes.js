@@ -106,7 +106,7 @@ export class Changes {
   }
 
   unwatch() {
-    this.watchHandle?.cancel();
+    this.watchHandle?.cancel?.(); // older Herdr: a plain promise, no cancel()
     this.watchHandle = null; this.watchToken = null; this.watched = null;
   }
 
