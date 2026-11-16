@@ -50,7 +50,7 @@ Left to right:
       files included", Push N when ahead, Commit).
   - Terminal area: a 34px tab strip of terminals and files together (2px
     underline on the active tab, program or file icon, title, agent dot, an
-    unsaved dot on files, ×), "+ New Terminal" and a chevron for templates;
+    unsaved dot on files, ×), "+ New" (Herdr's `new-menu`: terminal or installed agent) and a chevron for templates;
     then the active tab's panes with 1px borders, no gaps, no rounding.
   - A file tab: a 36px header (file icon, path from the checkout, unsaved dot,
     Edit / Split / Preview for markdown, "Read-only" for other machines, Save),

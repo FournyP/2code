@@ -1,5 +1,5 @@
 // 2code's tab strip: terminals and open files side by side, line style, then
-// "+ New Terminal" with a templates menu beside it.
+// "+ New" (Herdr's new-menu) with a templates menu beside it.
 import { div, svg, image } from "gpui-kit";
 import { h_flex, ScrollHandle } from "gpui-base";
 import { panes, run, theme, settings, openOverlay, shared } from "herdr";
@@ -92,8 +92,9 @@ export class Tabs {
       .child(h_flex().h_full().flex_none().items_center()
         .child(h_flex().id("tab-new").h_full().pl(10).pr(4).gap(6).items_center().cursor_pointer().text_color(th.dim)
           .hover((s) => s.text_color(th.foreground))
-          .on_click((_e, cx) => this.newTerminal(cx))
-          .child(icon("plus", 13)).child(t("newTerminal")))
+          // Herdr's menu: a terminal or an installed agent.
+          .on_click(() => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 }))
+          .child(icon("plus", 13)).child(t("new")))
         .child(div().id("tab-templates").h(22).w(22).flex().items_center().justify_center().rounded(5).cursor_pointer().text_color(th.dim)
           .hover((s) => s.bg(th.hover).text_color(th.foreground))
           .on_click(() => this.templates())
