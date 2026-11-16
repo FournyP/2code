@@ -28,6 +28,8 @@ Left to right:
     without an open space are drawn in `dim`.
   - Below: Herdr's shipped `agents` list; it and projects split the height (min 90 each).
   - 48px footer block: Settings (Herdr's settings).
+  - A project folder that isn't a repo but holds repos one level down is a group:
+    its child repos nest under it, 16px deeper.
   - Narrower than 160px: only 24px project tiles with their dots.
 - **Work column**:
   - 52px top bar (`background`, bottom border; on macOS, when the sidebar is
@@ -78,7 +80,7 @@ Left to right:
   project (and a rail tile) shows its most urgent worktree's status; an open
   one shows none, since its worktrees show theirs.
 - Projects are the shared list `2code.projects` (`[{path, machine, name?}]`).
-  Every 4s the sidebar adds the repo of each open space (its main checkout:
+  Every 4s the sidebar adds the repo of each open space (only repos; its main checkout:
   `git rev-parse --git-common-dir`) and reads each project's
   `git worktree list --porcelain`. Names come from the folder ("app.git" →
   "app", "bare.git" → its parent) unless renamed.
@@ -116,6 +118,8 @@ Left to right:
 - Finder (`cmd-k` / `ctrl-shift-k`): a dialog over `git ls-files --cached
   --others --exclude-standard` (else `find`), fuzzy-ranked (in order, runs,
   word starts and the file name score; shorter paths win ties), ↑↓ Enter.
+- Changes on a group folder: its child repos (with change counts) above the
+  files; click one to see and commit its changes.
 - Changes: click a row shows its diff (again hides it); checkboxes pick what
   Commit (or Enter in Summary) commits: `git add -A -- <checked>` then
   `git commit -m summary [-m description] -- <checked>`. The undo icon arms
@@ -129,9 +133,10 @@ Left to right:
 - Branch (top bar): searchable list (current, trunk from `origin/HEAD`,
   "used" when another worktree has it, ↑/↓ counts, remote-only branches);
   Enter or click runs `git switch` (`--track` for remote ones).
-- Tabs: click selects, right-click opens Herdr's tab menu (on a file tab: copy
-  relative / absolute path, Reveal, Open in Default App), × closes. New
-  Terminal opens a tab in the focused folder and types `init_script`. The
+- Tabs: click selects, right-click opens Herdr's tab menu (file tabs get 2code's
+  instead: copy relative / absolute path, Reveal, Open in Default App), × closes.
+  "+ New" is Herdr's menu (plain terminal, no `init_script`); the new-terminal key
+  opens a tab in the focused folder and types `init_script`. The
   chevron lists project templates and global ones; picking one opens a tab
   named after it in its `cwd` and types `init_script` then its `commands`.
 - Keys (section `layout:2code`): `cmd-t`/`ctrl-shift-t` new terminal,
@@ -148,8 +153,8 @@ Left to right:
 
 - Layout `layouts/2code.json`: root `row` (`titlebar: none`, traffic lights
   `[16, 19]`, theme `{light: 2code-light, dark: 2code-dark}`, JetBrains Mono
-  13, terminal padding `[8, 10]`) → `sidebar` column (`brand`, `projects`,
-  `agents`, `sidebar-footer` blocks) and `work` column (`topbar` block, `work-body` row → `panel` stack
+  13, terminal padding `[8, 10]`) → `sidebar` column (not resizable: `brand`,
+  `sidebar-lists` column [`projects`, `agents`], `sidebar-footer`) and `work` column (`topbar` block, `work-body` row → `panel` stack
   [`files`, `changes`] and `terminal-area` column [`tabs` block, `main` tab block]).
 - One mod, `mods/2code`, every block but `agents` `{mod: "2code", props: {part}}`. Parts:
   `header`, `sidebar`, `footer`, `topbar`, `tabs`, `files`, `changes`, `editor` (a tab),

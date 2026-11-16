@@ -10,7 +10,7 @@ import { spaces, panes, focused, run, theme, layout, window, pickFolder, openOve
 import { t, resolveLocale } from "../lib/i18n.js";
 import { readProjectConfig, scriptArgv } from "../lib/config.js";
 import { place, repoOf } from "../lib/git.js";
-import { savedProjects, addProject, projectKey, projectName, checkouts } from "../lib/projects.js";
+import { savedProjects, addProject, projectKey, projectName, checkouts, childRepos } from "../lib/projects.js";
 import { githubOwner, githubAvatar } from "../lib/os.js";
 import { icon, stop, dot, worst, find } from "../lib/ui.js";
 
@@ -73,6 +73,8 @@ export class Sidebar {
     this.cursor = null;
     this.repo = {};       // space id -> { at, main, top, name }
     this.checkouts = {};  // project key -> [{ path, branch, main }]
+    this.children = {};   // group key -> child repo paths
+    this.scanned = {};    // group key -> when children were listed
     this.avatars = {};    // project key -> image path | null
     this.closed = JSON.parse(localStorage.getItem("closed") ?? "{}");
     this.hover = null;
@@ -92,50 +94,75 @@ export class Sidebar {
         for (const s of spaces()) {
           const at = place(s, all);
           if (!at) continue;
-          if (this.repo[s.id]?.at !== at) {
+          // A failed lookup (machine not up yet, folder gone) is tried again.
+          if (this.repo[s.id]?.at !== at || this.repo[s.id].linked === undefined) {
             const r = await repoOf(at, s.machine);
             this.repo[s.id] = r ? { at, ...r } : { at, main: at, top: at, name: at.split("/").pop() || at };
           }
-          addProject(this.repo[s.id].main, s.machine ?? null);
+          // Only repos: a plain or deleted folder isn't a project.
+          if (this.repo[s.id].linked !== undefined) addProject(this.repo[s.id].main, s.machine ?? null);
         }
-        // Every project's checkouts, and its GitHub avatar once.
-        for (const p of savedProjects()) {
-          const key = projectKey(p);
-          this.checkouts[key] = await checkouts(p.path, p.machine);
-          if (!(key in this.avatars)) {
-            this.avatars[key] = null;
-            const owner = await githubOwner(p.path, p.machine).catch(() => null);
-            this.avatars[key] = await githubAvatar(owner);
-          }
-        }
+        const nested = new Set(Object.values(this.children).flat());
+        for (const p of savedProjects()) if (!nested.has(p.path)) await this.load(p);
       } catch {}
       finally { this.busy = false; cx.notify(); }
     });
   }
 
-  // Projects in saved order; one profile per checkout, with all its spaces.
+  // A project's checkouts, its child repos if it's a group, and its GitHub avatar once.
+  async load(p, nested = false) {
+    const key = projectKey(p);
+    this.checkouts[key] = await checkouts(p.path, p.machine);
+    // Child repos: rescanned every 30s.
+    if (nested || !this.checkouts[key][0]?.plain) this.children[key] = [];
+    else if (!this.children[key] || Date.now() - (this.scanned[key] ?? 0) > 30000) {
+      this.children[key] = await childRepos(p.path, p.machine);
+      this.scanned[key] = Date.now();
+    }
+    for (const c of this.children[key]) await this.load({ path: c, machine: p.machine ?? null }, true);
+    if (!(key in this.avatars)) {
+      this.avatars[key] = null;
+      const owner = await githubOwner(p.path, p.machine).catch(() => null);
+      this.avatars[key] = await githubAvatar(owner);
+    }
+  }
+
+  // Saved projects in order, groups holding their child repos (`repos`).
   projects() {
-    const open = spaces().map((s) => ({ s, r: this.repo[s.id], at: place(s) }));
-    return savedProjects().map((p) => {
-      const key = projectKey(p), on = p.machine ?? null;
-      const list = this.checkouts[key] ?? [{ path: p.path, branch: null, main: true }];
-      const profiles = list.map((c) => ({ ...c, spaces: [] }));
-      for (const { s, r, at } of open) {
-        if ((s.machine ?? null) !== on) continue;
-        // Not refreshed yet: match by folder.
-        let x = r ? (r.main === p.path ? profiles.find((y) => y.path === r.top) : null) : within(profiles, at);
-        // Checkout git didn't list (yet).
-        if (!x && r?.main === p.path) profiles.push(x = { path: r.top, branch: s.branch, main: r.top === p.path, spaces: [] });
-        x?.spaces.push(s);
-      }
-      for (const x of profiles) {
-        x.space = x.spaces.find((s) => s.active) ?? x.spaces[0] ?? null;
-        x.status = worst(x.spaces.map((s) => s.status));
-        if (!x.branch) x.branch = x.spaces.find((s) => s.branch)?.branch ?? null;
-      }
-      return { path: p.path, machine: on, on, key, name: projectName(p), profiles, avatar: this.avatars[key] ?? null };
+    const saved = savedProjects(), on = (p) => p.machine ?? null, all = panes();
+    const open = spaces().map((s) => ({ s, r: this.repo[s.id], at: place(s, all) }));
+    const child = (g, c) => saved.find((q) => q.path === c && on(q) === on(g)) ?? { path: c, machine: on(g) };
+    const nested = new Set(saved.flatMap((g) => (this.children[projectKey(g)] ?? []).map((c) => projectKey(child(g, c)))));
+    return saved.filter((p) => !nested.has(projectKey(p))).map((p) => {
+      const e = this.entry(p, open);
+      e.repos = (this.children[e.key] ?? []).map((c) => this.entry(child(p, c), open));
+      e.every = [...e.profiles, ...e.repos.flatMap((r) => r.profiles)];
+      return e;
     });
   }
+
+  // One project; one profile per checkout, with all its spaces.
+  entry(p, open) {
+    const key = projectKey(p), on = p.machine ?? null, kids = this.children[key] ?? [];
+    const list = this.checkouts[key] ?? [{ path: p.path, branch: null, main: true }];
+    const profiles = list.map((c) => ({ ...c, spaces: [] }));
+    for (const { s, r, at } of open) {
+      if ((s.machine ?? null) !== on) continue;
+      // Not refreshed yet or not a repo: match by folder (a group leaves its child repos' folders to them).
+      let x = r?.linked !== undefined ? (r.main === p.path ? profiles.find((y) => y.path === r.top) : null)
+        : kids.some((c) => at === c || at?.startsWith(c + "/")) ? null : within(profiles, at);
+      // Checkout git didn't list (yet).
+      if (!x && r?.main === p.path) profiles.push(x = { path: r.top, branch: s.branch, main: r.top === p.path, spaces: [] });
+      x?.spaces.push(s);
+    }
+    for (const x of profiles) {
+      x.space = x.spaces.find((s) => s.active) ?? x.spaces[0] ?? null;
+      x.status = worst(x.spaces.map((s) => s.status));
+      if (!x.branch) x.branch = x.spaces.find((s) => s.branch)?.branch ?? null;
+    }
+    return { path: p.path, machine: on, on, key, name: projectName(p), profiles, avatar: this.avatars[key] ?? null };
+  }
+
 
   toggle(key) {
     this.closed[key] = !this.closed[key];
@@ -161,13 +188,14 @@ export class Sidebar {
   }
 
   openProject(p) {
-    const shown = p.profiles.find((x) => x.space?.active) ?? p.profiles.find((x) => x.space) ?? p.profiles[0];
+    const all = p.every ?? p.profiles;
+    const shown = all.find((x) => x.space?.active) ?? all.find((x) => x.space) ?? all[0];
     if (shown?.space) run("space.select", { id: shown.space.id });
     else if (shown) this.openProfile(p, shown);
   }
 
   menu(kind, p, x) {
-    const target = { path: p.path, machine: p.on, name: p.name, ...(x ? { top: x.path, branch: x.branch, main: x.main, space: x.space?.id ?? null, spaces: x.spaces.map((s) => s.id) } : {}) };
+    const target = { path: p.path, machine: p.on, name: p.name, group: Boolean(p.repos?.length), ...(x ? { top: x.path, branch: x.branch, main: x.main, space: x.space?.id ?? null, spaces: owned(x).map((s) => s.id) } : {}) };
     openOverlay({ mod: "2code", kind: "popup", width: 230, height: kind === "project" ? 196 : 124, props: { part: "menu", kind, target } });
   }
 
@@ -177,12 +205,13 @@ export class Sidebar {
       .text_size(size * 0.55).font_semibold().text_color(th.muted).child((p.name[0] ?? "?").toUpperCase());
   }
 
-  projectRow(p, th) {
-    const active = p.profiles.some((x) => x.space?.active);
+  projectRow(p, th, depth = 0) {
+    const all = p.every ?? p.profiles, group = Boolean(p.repos?.length);
+    const active = all.some((x) => x.space?.active);
     const open = !this.closed[p.key];
-    const status = worst(p.profiles.map((x) => x.status));
+    const status = worst(all.map((x) => x.status));
     const hovered = this.hover === p.key;
-    return h_flex().id(`project-${p.key}`).h(32).px(8).gap(8).items_center().rounded(6).cursor_pointer()
+    return h_flex().id(`project-${p.key}`).h(32).pl(8 + depth * 16).pr(8).gap(8).items_center().rounded(6).cursor_pointer()
       .bg(active && !open ? th.selected : th.chrome).hover((s) => s.bg(th.hover))
       .border_1().border_color(this.ring(p.key) ? th.accent : th.chrome + "00")
       .on_hover((h, cx) => { this.hover = h ? p.key : (this.hover === p.key ? null : this.hover); cx.notify(); })
@@ -192,7 +221,7 @@ export class Sidebar {
       .child(div().flex_1().min_w(0).truncate().text_color(th.foreground).child(p.name))
       // The project's dot sums up its worktrees, so it shows only while they're folded away.
       .when(!open && !hovered && Boolean(dot(status, th)), (el) => el.child(dot(status, th)))
-      .when(hovered, (el) => el.child(div().id(`profile-new-${p.key}`).size(20).flex().items_center().justify_center().rounded(5)
+      .when(hovered && !group, (el) => el.child(div().id(`profile-new-${p.key}`).size(20).flex().items_center().justify_center().rounded(5)
         .text_color(th.dim).hover((s) => s.bg(th.raised).text_color(th.foreground))
         .on_click((_e, cx) => { cx.stop_propagation(); newProfile(p, cx); })
         .child(icon("plus", 13))))
@@ -201,11 +230,11 @@ export class Sidebar {
         .child(icon(open ? "chevron-down" : "chevron-right", 13)));
   }
 
-  profileRow(p, x, th) {
+  profileRow(p, x, th, depth = 0) {
     const label = x.branch ?? (x.main ? t("defaultProfile") : x.path.split("/").pop());
     const id = `${p.key}:${x.path}`, hovered = this.hover === id, active = Boolean(x.space?.active);
     const color = active ? th.foreground : x.space ? th.muted : th.dim;
-    return h_flex().id(`profile-${id}`).h(28).pl(36).pr(8).gap(7).items_center().rounded(6).cursor_pointer()
+    return h_flex().id(`profile-${id}`).h(28).pl(36 + depth * 16).pr(8).gap(7).items_center().rounded(6).cursor_pointer()
       .bg(active ? th.selected : th.chrome).hover((st) => st.bg(th.hover))
       .border_1().border_color(this.ring(id) ? th.accent : th.chrome + "00")
       .on_hover((h, cx) => { this.hover = h ? id : (this.hover === id ? null : this.hover); cx.notify(); })
@@ -232,8 +261,15 @@ export class Sidebar {
   navRows(projects) {
     return projects.flatMap((p) => [
       { id: p.key, p },
-      ...(this.closed[p.key] ? [] : p.profiles.map((x) => ({ id: `${p.key}:${x.path}`, p, x }))),
+      ...(this.closed[p.key] ? [] : [...p.profiles.map((x) => ({ id: `${p.key}:${x.path}`, p, x })), ...this.navRows(p.repos ?? [])]),
     ]);
+  }
+
+  rows(p, th, depth = 0) {
+    return [
+      this.projectRow(p, th, depth),
+      ...(this.closed[p.key] ? [] : [...p.profiles.map((x) => this.profileRow(p, x, th, depth)), ...(p.repos ?? []).flatMap((r) => this.rows(r, th, depth + 1))]),
+    ];
   }
 
   key(e, projects, cx) {
@@ -264,7 +300,7 @@ export class Sidebar {
   rail(projects, th) {
     return v_flex().id("project-rail").flex_1().min_h(0).py(2).gap(6).items_center().overflow_y_scrollbar()
       .children(projects.map((p) => {
-        const active = p.profiles.some((x) => x.space?.active), status = worst(p.profiles.map((x) => x.status));
+        const all = p.every ?? p.profiles, active = all.some((x) => x.space?.active), status = worst(all.map((x) => x.status));
         return div().id(`rail-${p.key}`).relative().p(4).rounded(7).cursor_pointer().bg(active ? th.selected : th.chrome).hover((s) => s.bg(th.hover))
           .on_click(() => this.openProject(p))
           .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.menu("project", p); })
@@ -279,9 +315,8 @@ export class Sidebar {
     const projects = this.projects();
     const narrow = this.width < RAIL;
     if (this.handle.is_focused() && !this.cursor) {
-      const p = projects.find((q) => q.profiles.some((x) => x.space?.active));
-      const x = p?.profiles.find((y) => y.space?.active);
-      this.cursor = p ? (x && !this.closed[p.key] ? `${p.key}:${x.path}` : p.key) : projects[0]?.key ?? null;
+      const hit = this.navRows(projects).find((r) => r.x?.space?.active);
+      this.cursor = hit?.id ?? projects.find((q) => (q.every ?? q.profiles).some((x) => x.space?.active))?.key ?? projects[0]?.key ?? null;
     }
     return v_flex().id("sidebar-root").size_full().min_h(0).bg(th.chrome).text_size(13)
       .track_focus(this.handle)
@@ -294,10 +329,7 @@ export class Sidebar {
           .hover((s) => s.bg(th.hover).text_color(th.foreground)).on_click(() => this.addProject())
           .child(icon("plus", 14))))
       .child(narrow ? this.rail(projects, th) : v_flex().id("project-list").flex_1().min_h(0).px(8).gap(1).overflow_y_scrollbar()
-        .children(projects.flatMap((p) => [
-          this.projectRow(p, th),
-          ...(this.closed[p.key] ? [] : p.profiles.map((x) => this.profileRow(p, x, th))),
-        ]))
+        .children(projects.flatMap((p) => this.rows(p, th)))
         .when(!projects.length, (el) => el.child(div().p(8).text_color(th.dim).child(t("noProjects")))));
   }
 }
@@ -327,6 +359,9 @@ export async function openNewProfile(p) {
   openOverlay({ mod: "worktree", kind: "dialog", width: 460, height: 280, props: { folder: p.path, machine: on, action: "new", ...setup } });
 }
 
+// Spaces made in the checkout: a shell that only cd'd there isn't closed with it.
+const owned = (x) => x.spaces.filter((s) => s.folder === x.path || s.folder?.startsWith(x.path + "/"));
+
 // Deepest checkout holding the folder.
 function within(profiles, at) {
   if (!at) return null;
@@ -339,5 +374,5 @@ export function newProfile(p, cx) {
 }
 
 export function deleteProfile(p, x) {
-  openOverlay({ mod: "2code", kind: "dialog", width: 480, height: 340, props: { part: "deleteProfile", main: p.path, top: x.path, branch: x.branch ?? null, spaces: (x.spaces ?? (x.space ? [x.space] : [])).map((s) => s.id), on: p.on ?? p.machine ?? null } });
+  openOverlay({ mod: "2code", kind: "dialog", width: 480, height: 340, props: { part: "deleteProfile", main: p.path, top: x.path, branch: x.branch ?? null, spaces: (x.spaces ? owned(x) : x.space ? [x.space] : []).map((s) => s.id), on: p.on ?? p.machine ?? null } });
 }

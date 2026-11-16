@@ -9,6 +9,8 @@ import { spaces, panes, focused, exec, watchFolder, theme, settings, shared, ope
 import { t, locale } from "../lib/i18n.js";
 import { readChanges, fileDiff, unifiedRows, commit, discard, ahead, push } from "../lib/changes.js";
 import { ICON, icon } from "../lib/ui.js";
+import { READ } from "../lib/git.js";
+import { childRepos } from "../lib/projects.js";
 
 function location() {
   const space = spaces().find((s) => s.active), f = focused();
@@ -66,57 +68,88 @@ export class Changes {
     if (had !== Boolean(this.summary.trim())) cx.notify();
   }
 
+  // One watch at a time: the old one is cancelled (Herdr caps pending watches).
   watch(root, cx) {
     if (this.on || this.watched === root) return;
+    this.unwatch();
+    const token = this.watchToken = {};
     this.watched = root;
     cx.spawn(async (cx) => {
       try {
-        while (this.watched === root) {
-          await watchFolder(root);
-          if (this.watched === root) this.refresh(cx);
+        while (this.watchToken === token) {
+          this.watchHandle = watchFolder(root);
+          await this.watchHandle;
+          if (this.watchToken === token) this.refresh(cx);
         }
-      } catch { this.watched = null; }
+      } catch { if (this.watchToken === token) this.watched = null; }
     });
   }
 
+  unwatch() {
+    this.watchHandle?.cancel();
+    this.watchHandle = null; this.watchToken = null; this.watched = null;
+  }
+
   refresh(cx) {
-    if (this.loading || this.busy) return;
-    const { cwd, on } = location(), context = key();
+    // A refresh asked for mid-flight runs once the current one ends.
+    if (this.loading || this.busy) { this.again = true; return; }
+    this.again = false;
+    const { cwd, on } = location(), context = key(), gen = this.gen;
     if (context !== this.context) {
       this.context = context; this.root = null; this.files = []; this.open = null; this.excluded = new Set(); this.confirm = null;
-      this.rows = []; this.error = null; this.note = null; this.watched = null; this.limited = false; this.ahead = { count: 0, upstream: null };
+      this.rows = []; this.error = null; this.note = null; this.limited = false; this.ahead = { count: 0, upstream: null }; this.repos = null; this.picked = null;
+      this.unwatch();
     }
     if (!cwd) return;
+    const stale = () => key() !== context || this.gen !== gen;
     this.loading = true;
     cx.spawn(async (cx) => {
       try {
         const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on });
-        if (key() !== context) return;
-        if (top.code !== 0) { this.root = null; this.files = []; this.rows = []; this.open = null; this.error = t("notGit"); return; }
-        const root = top.stdout.trim();
+        if (stale()) return;
+        let root = top.stdout.trim();
+        if (top.code !== 0) {
+          // A group folder: its child repos, one shown at a time. Counts at most every 10s.
+          if (!this.repos || Date.now() - this.counted > 9000) {
+            const kids = await childRepos(cwd, on);
+            const repos = await Promise.all(kids.map(async (path) => {
+              const r = await exec("git", [...READ, "status", "--porcelain"], { cwd: path, on }).catch(() => null);
+              return { path, count: r?.code === 0 ? r.stdout.split("\n").filter(Boolean).length : 0 };
+            }));
+            if (stale()) return;
+            this.repos = repos; this.counted = Date.now();
+          }
+          const kids = this.repos.map((r) => r.path);
+          if (!kids.length) { this.root = null; this.files = []; this.rows = []; this.open = null; this.repos = null; this.error = t("notGit"); return; }
+          // Stays on the shown repo until another is picked.
+          root = kids.includes(this.picked) ? this.picked : (this.repos.find((r) => r.count)?.path ?? kids[0]);
+          this.picked = root;
+        } else this.repos = null;
         const { files, hasHead, limited } = await readChanges(root, on);
         const a = await ahead(root, on);
-        if (key() !== context) return;
+        if (stale()) return;
+        if (root !== this.root) { this.open = null; this.rows = []; this.excluded = new Set(); this.confirm = null; }
         this.root = root; this.on = on; this.hasHead = hasHead; this.files = files; this.limited = limited; this.error = null; this.ahead = a;
         for (const path of [...this.excluded]) if (!files.some((f) => f.path === path)) this.excluded.delete(path);
         this.watch(root, cx);
         if (this.open && !files.some((f) => f.path === this.open)) { this.open = null; this.rows = []; }
         if (this.open) await this.load(this.open, context);
-      } catch (e) { if (key() === context) this.error = String(e?.message ?? e); }
-      finally { this.loading = false; cx.notify(); }
+      } catch (e) { if (!stale()) this.error = String(e?.message ?? e); }
+      finally { this.loading = false; cx.notify(); if (this.again) this.refresh(cx); }
     });
   }
 
   async load(path, context) {
-    const file = this.files.find((f) => f.path === path);
+    const file = this.files.find((f) => f.path === path), root = this.root;
     if (!file) return;
+    const current = () => key() === context && this.open === path && this.root === root;
     try {
-      const d = await fileDiff(this.root, this.on, file, this.hasHead);
+      const d = await fileDiff(root, this.on, file, this.hasHead);
       const lines = d.lines ?? [t(d.note === "binary" ? "binaryChanged" : d.note === "unreadable" ? "fileUnreadable" : "noTextDiff")];
-      if (key() !== context || this.open !== path) return;
+      if (!current()) return;
       this.rows = unifiedRows(lines);
       this.diffWidth = Math.max(240, ...this.rows.map((row) => (row.text.length + 1) * 7 + 50));
-    } catch { if (key() === context && this.open === path) this.rows = unifiedRows([t("diffUnreadable")]); }
+    } catch { if (current()) this.rows = unifiedRows([t("diffUnreadable")]); }
   }
 
   pick(path, cx) {
@@ -124,6 +157,23 @@ export class Changes {
     const context = this.context;
     if (this.open) cx.spawn(async (cx) => { await this.load(path, context); cx.notify(); });
     cx.notify();
+  }
+
+  pickRepo(path, cx) {
+    if (this.root === path) return;
+    this.gen = (this.gen ?? 0) + 1;
+    this.picked = path; this.root = null; this.files = []; this.open = null; this.rows = []; this.excluded = new Set(); this.confirm = null; this.note = null;
+    this.refresh(cx);
+    cx.notify();
+  }
+
+  repoRow(r, th) {
+    return h_flex().id(`repo-${r.path}`).h(26).flex_none().mx(4).px(8).gap(8).items_center().rounded(4).cursor_pointer()
+      .when(this.root === r.path, (e) => e.bg(th.selected)).hover((s) => s.bg(th.hover))
+      .on_click((_e, cx) => this.pickRepo(r.path, cx))
+      .child(icon("git-branch", 12).text_color(th.dim))
+      .child(div().flex_1().min_w(0).truncate().text_size(12).child(r.path.split("/").pop()))
+      .when(r.count > 0, (el) => el.child(div().text_size(11).text_color(th.dim).child(String(r.count))));
   }
 
   included() {
@@ -232,6 +282,8 @@ export class Changes {
           .hover((s) => s.bg(th.hover).text_color(th.foreground))
           .on_click(() => openDiffDialog())
           .child(icon("maximize", 13))))
+      .when(Boolean(this.repos), (el) => el.child(v_flex().id("changes-repos").flex_none().max_h(146).overflow_y_scroll().py(4).border_b(1).border_color(th.border)
+        .children(this.repos.map((r) => this.repoRow(r, th)))))
       // overflow_y_scrollbar() wraps the list, so its flex sizing never reached the panel's layout.
       .child(div().flex_1().min_h(44).max_h(this.open ? this.files.length * 30 + 12 : 100000).relative()
         .child(v_flex().id("changes-list").absolute().inset_0().overflow_y_scroll().py(4).children(this.files.map((f) => this.fileRow(f, th)))

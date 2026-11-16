@@ -17,7 +17,7 @@ export class Menu {
     const local = !x.machine;
     const project = { path: x.path, machine: x.machine, on: x.machine, name: x.name };
     if (kind === "project") return [
-      ["plus", t("newProfile"), () => openNewProfile(project)],
+      ...(!x.group ? [["plus", t("newProfile"), () => openNewProfile(project)]] : []),
       ["square-pen", t("rename"), () => openOverlay({ mod: "2code", kind: "dialog", width: 420, height: 220, props: { part: "rename", path: x.path, machine: x.machine, name: x.name } })],
       ["settings", t("projectSettings"), () => openOverlay({ mod: "2code", kind: "dialog", width: 640, height: 0.8, props: { part: "projectSettings", path: x.path, machine: x.machine, name: x.name } })],
       ...(local ? [["folder", t("reveal"), () => reveal(x.path)]] : []),

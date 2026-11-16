@@ -2,7 +2,7 @@
 // main checkout) and the machine it's on, plus an optional name the person gave
 // it; everything else is derived. Stored in Herdr's shared state, which is
 // persisted and redraws every mod when it changes.
-import { shared, setShared } from "herdr";
+import { shared, setShared, exec } from "herdr";
 import { git } from "./git.js";
 
 const KEY = "2code.projects";
@@ -43,7 +43,7 @@ export function renameProject(path, machine, name) {
 // main checkout first. A folder outside git is its own single checkout.
 export async function checkouts(path, on) {
   const r = await git(path, ["worktree", "list", "--porcelain"], on);
-  if (!r.ok) return [{ path, branch: null, main: true }];
+  if (!r.ok) return [{ path, branch: null, main: true, plain: true }];
   const out = [];
   for (const block of r.out.split(/\n\n+/)) {
     const lines = block.split("\n");
@@ -53,4 +53,11 @@ export async function checkouts(path, on) {
     out.push({ path: at, branch, main: out.length === 0 });
   }
   return out.length ? out : [{ path, branch: null, main: true }];
+}
+
+// Git repos one level down (real paths; linked worktrees skipped): a non-git
+// folder holding them is a group.
+export async function childRepos(path, on) {
+  const r = await exec("sh", ["-c", 'for d in "$1"/*/; do [ -d "$d.git" ] && (cd "$d" && pwd -P); done; true', "2code", path], { on }).catch(() => null);
+  return r?.code === 0 ? r.stdout.split("\n").filter(Boolean) : [];
 }

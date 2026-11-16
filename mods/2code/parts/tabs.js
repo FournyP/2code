@@ -68,7 +68,7 @@ export class Tabs {
       .on_click(() => run("tab.select", { id: c.id }))
       .on_mouse_down("right", (_e, cx) => {
         cx.stop_propagation();
-        if (file) openOverlay({ mod: "2code", kind: "popup", width: 240, height: file.on ? 70 : 130, props: { part: "fileMenu", tab: true, path: file.path, on: file.on ?? null } });
+        if (file) openOverlay({ mod: "2code", kind: "popup", width: 240, height: file.on ? 70 : 130, props: { part: "fileMenu", tab: true, path: file.path, on: file.on ?? null, root: file.root ?? null } });
         else openOverlay({ mod: "menu", kind: "popup", width: 200, props: { tab: "tab", target: { id: c.id, space: here().space?.id } } });
       })
       .child(glyph)

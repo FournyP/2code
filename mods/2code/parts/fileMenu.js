@@ -15,7 +15,7 @@ const refresh = () => setShared("2code.filesRefresh", Date.now());
 export class FileMenu {
   init(p, cx) {
     this.p = p;
-    // A file tab doesn't know its root: take the checkout's.
+    // A file tab opened before roots were kept: take the checkout's.
     if (!p.root) cx.spawn(async (cx) => { this.root = (await repoOf(parentOf(p.path), p.on))?.top; cx.notify(); });
   }
 

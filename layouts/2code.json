@@ -31,6 +31,7 @@
       "min": 44,
       "max": 420,
       "background": "chrome",
+      "resizable": false,
       "children": [
         {
           "id": "brand",
@@ -47,29 +48,35 @@
           }
         },
         {
-          "id": "projects",
-          "type": "block",
-          "size": {
-            "weight": 1
-          },
-          "min": 90,
-          "content": {
-            "mod": "2code",
-            "props": {
-              "part": "sidebar"
+          "id": "sidebar-lists",
+          "type": "column",
+          "children": [
+            {
+              "id": "projects",
+              "type": "block",
+              "size": {
+                "weight": 1
+              },
+              "min": 90,
+              "content": {
+                "mod": "2code",
+                "props": {
+                  "part": "sidebar"
+                }
+              }
+            },
+            {
+              "id": "agents",
+              "type": "block",
+              "size": {
+                "weight": 1
+              },
+              "min": 90,
+              "content": {
+                "mod": "agents"
+              }
             }
-          }
-        },
-        {
-          "id": "agents",
-          "type": "block",
-          "size": {
-            "weight": 1
-          },
-          "min": 90,
-          "content": {
-            "mod": "agents"
-          }
+          ]
         },
         {
           "id": "sidebar-footer",

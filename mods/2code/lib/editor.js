@@ -1,7 +1,7 @@
 // Files open as tabs, beside the terminals, as in 2code: each file is a Herdr
 // tab whose only pane is the `editor` part. Herdr keeps those tabs (and their
 // props) with the space, so open files come back after a restart.
-// shared "2code.editors": { [tabId]: { path, on } } maps tabs to files, and
+// shared "2code.editors": { [tabId]: { path, on, root } } maps tabs to files, and
 // shared "2code.dirty": { [fileKey]: true } marks unsaved ones.
 import { spaces, run, shared, setShared } from "herdr";
 
@@ -45,7 +45,7 @@ export async function openFile(cx, { space, path, on = null, root }) {
   run("tab.new", { space: s.id, name: baseName(path), mod: "2code", props: { part: "editor", path, on, root } });
   for (let i = 0; i < 40; i++) {
     const tab = spaces().find((x) => x.id === s.id)?.tabs.find((t) => !mine.has(t.id));
-    if (tab) { setShared("2code.editors", { ...editorTabs(), [tab.id]: { path, on } }); return; }
+    if (tab) { setShared("2code.editors", { ...editorTabs(), [tab.id]: { path, on, root: root ?? null } }); return; }
     await cx.sleep(50);
   }
 }
