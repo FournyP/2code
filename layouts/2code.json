@@ -49,10 +49,38 @@
         {
           "id": "projects",
           "type": "block",
+          "size": {
+            "weight": 1
+          },
+          "min": 90,
           "content": {
             "mod": "2code",
             "props": {
               "part": "sidebar"
+            }
+          }
+        },
+        {
+          "id": "agents",
+          "type": "block",
+          "size": {
+            "weight": 1
+          },
+          "min": 90,
+          "content": {
+            "mod": "agents"
+          }
+        },
+        {
+          "id": "sidebar-footer",
+          "type": "block",
+          "size": {
+            "px": 48
+          },
+          "content": {
+            "mod": "2code",
+            "props": {
+              "part": "footer"
             }
           }
         }

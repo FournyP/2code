@@ -298,8 +298,18 @@ export class Sidebar {
           this.projectRow(p, th),
           ...(this.closed[p.key] ? [] : p.profiles.map((x) => this.profileRow(p, x, th))),
         ]))
-        .when(!projects.length, (el) => el.child(div().p(8).text_color(th.dim).child(t("noProjects")))))
-      .child(h_flex().id("settings").h(32).mx(8).mb(10).px(narrow ? 0 : 8).gap(8).items_center().rounded(6).cursor_pointer()
+        .when(!projects.length, (el) => el.child(div().p(8).text_color(th.dim).child(t("noProjects")))));
+  }
+}
+
+// Settings, pinned to the sidebar's bottom (below the agents list).
+export class SidebarFooter {
+  render() {
+    const th = theme();
+    shared("2code.locale");
+    const narrow = (find(layout(), "sidebar")?.size?.px ?? 250) < RAIL;
+    return v_flex().size_full().justify_center().bg(th.chrome).text_size(13)
+      .child(h_flex().id("settings").h(32).mx(8).px(narrow ? 0 : 8).gap(8).items_center().rounded(6).cursor_pointer()
         .when(narrow, (el) => el.justify_center())
         .text_color(th.muted).hover((s) => s.bg(th.hover).text_color(th.foreground))
         .on_click(() => run("app.settings"))

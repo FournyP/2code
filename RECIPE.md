@@ -26,7 +26,8 @@ Left to right:
     worktree (checkout): branch icon, branch name (main checkout first), and
     an 18px slot with its agent dot, lined up under the caret. Worktrees
     without an open space are drawn in `dim`.
-  - Footer: Settings (Herdr's settings).
+  - Below: Herdr's shipped `agents` list; it and projects split the height (min 90 each).
+  - 48px footer block: Settings (Herdr's settings).
   - Narrower than 160px: only 24px project tiles with their dots.
 - **Work column**:
   - 52px top bar (`background`, bottom border; on macOS, when the sidebar is
@@ -146,11 +147,11 @@ Left to right:
 
 - Layout `layouts/2code.json`: root `row` (`titlebar: none`, traffic lights
   `[16, 19]`, theme `{light: 2code-light, dark: 2code-dark}`, JetBrains Mono
-  13, terminal padding `[8, 10]`) → `sidebar` column (`brand`, `projects`
-  blocks) and `work` column (`topbar` block, `work-body` row → `panel` stack
+  13, terminal padding `[8, 10]`) → `sidebar` column (`brand`, `projects`,
+  `agents`, `sidebar-footer` blocks) and `work` column (`topbar` block, `work-body` row → `panel` stack
   [`files`, `changes`] and `terminal-area` column [`tabs` block, `main` tab block]).
-- One mod, `mods/2code`, every block `{mod: "2code", props: {part}}`. Parts:
-  `header`, `sidebar`, `topbar`, `tabs`, `files`, `changes`, `editor` (a tab),
+- One mod, `mods/2code`, every block but `agents` `{mod: "2code", props: {part}}`. Parts:
+  `header`, `sidebar`, `footer`, `topbar`, `tabs`, `files`, `changes`, `editor` (a tab),
   and overlays `menu`, `templates`, `openIn`, `fileMenu` (popups), `rename`,
   `removeProject`, `deleteProfile`, `projectSettings`, `diff`, `review`,
   `branches`, `finder`, `filePrompt`, `fileDelete`, `unsaved` (dialogs).
