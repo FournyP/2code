@@ -7,7 +7,6 @@ import { v_flex, h_flex } from "gpui-base";
 import { spaces, exec, watchFolder, theme, settings, window, shared, openOverlay } from "herdr";
 import { t } from "../lib/i18n.js";
 import { READ, location, repoOf } from "../lib/git.js";
-import { icon } from "../lib/ui.js";
 import { fileIcon } from "../lib/fileIcons.js";
 import { openFile } from "../lib/editor.js";
 
@@ -154,7 +153,6 @@ export class Files {
         .text_color(mark ? markColor(mark, th) : th.muted).hover((s) => s.bg(th.hover).text_color(mark ? markColor(mark, th) : th.foreground))
         .on_click((_e, cx) => (entry.dir ? this.toggle(path, cx) : cx.spawn(async (cx) => { await openFile(cx, { path: abs, on: this.on, root: this.root }); })))
         .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.menu(entry, path); })
-        .child(entry.dir ? icon(open ? "chevron-down" : "chevron-right", 12).text_color(th.dim) : div().w(12).flex_none())
         .child(image(fileIcon(path, entry.dir, open, dark)).size(15).flex_none())
         .child(div().flex_1().min_w(0).truncate().child(entry.name))
         .when(changed, (el) => el.child(div().size(6).flex_none().rounded(3).bg(th.ansi4)))
