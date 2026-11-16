@@ -39,7 +39,7 @@ export class DeleteProfile {
     if (this.state !== "idle") return;
     this.error = null;
     cx.spawn(async (cx) => {
-      const { top, main, on, space } = this.p;
+      const { top, main, on, spaces = [] } = this.p;
       try {
         if (withTeardown) {
           this.state = "teardown"; cx.notify();
@@ -50,7 +50,7 @@ export class DeleteProfile {
         }
         this.state = "removing"; cx.notify();
         // Terminals first: a shell sitting in the folder keeps it busy on Windows.
-        if (space) run("space.close", { id: space, confirmed: true });
+        for (const id of spaces) run("space.close", { id, confirmed: true });
         const force = (this.check?.dirty ?? 0) > 0;
         const r = await git(main, ["worktree", "remove", ...(force ? ["--force"] : []), top], on, 600_000);
         if (!r.ok) throw new Error(t("removeFailed", { error: r.err }));

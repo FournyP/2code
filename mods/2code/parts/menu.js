@@ -26,7 +26,7 @@ export class Menu {
     return [
       ["terminal", t("open"), () => (x.space ? run("space.select", { id: x.space }) : run("space.new", { folder: x.top, machine: x.machine ?? "" }))],
       ...(local ? [["folder", t("reveal"), () => reveal(x.top)]] : []),
-      ...(!x.main ? [["x", t("deleteProfile"), () => deleteProfile(project, { path: x.top, branch: x.branch, space: x.space ? { id: x.space } : null })]] : []),
+      ...(!x.main ? [["x", t("deleteProfile"), () => deleteProfile(project, { path: x.top, branch: x.branch, spaces: (x.spaces ?? []).map((id) => ({ id })) })]] : []),
     ];
   }
 

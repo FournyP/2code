@@ -205,6 +205,7 @@ Left to right:
 - Closing a project's last tab leaves it in the sidebar; clicking its worktree
   opens a space there.
 - Two worktrees of one repo appear as worktrees under one project row.
+- Several spaces on one checkout share one row; clicking cycles them.
 - `+` with a `setup_script` gives a worktree whose first tab ran it; `×` runs
   `teardown_script` and removes the worktree.
 - Project Settings saves templates into `2code.json` and they show in the

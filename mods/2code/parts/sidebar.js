@@ -113,18 +113,26 @@ export class Sidebar {
     });
   }
 
-  // Projects in saved order, each with its profiles: a checkout and the open
-  // space showing it (if any).
+  // Projects in saved order; one profile per checkout, with all its spaces.
   projects() {
-    const open = spaces().map((s) => ({ s, r: this.repo[s.id] }));
+    const open = spaces().map((s) => ({ s, r: this.repo[s.id], at: place(s) }));
     return savedProjects().map((p) => {
       const key = projectKey(p), on = p.machine ?? null;
-      const mine = open.filter(({ s, r }) => (s.machine ?? null) === on && r && r.main === p.path);
       const list = this.checkouts[key] ?? [{ path: p.path, branch: null, main: true }];
-      const profiles = list.map((c) => ({ ...c, space: mine.find(({ r }) => r.top === c.path)?.s ?? null }));
-      // Spaces in this repo whose checkout git didn't list (yet): show them too.
-      for (const { s, r } of mine) if (!profiles.some((x) => x.space?.id === s.id)) profiles.push({ path: r.top, branch: s.branch, main: r.top === p.path, space: s });
-      for (const x of profiles) if (!x.branch && x.space?.branch) x.branch = x.space.branch;
+      const profiles = list.map((c) => ({ ...c, spaces: [] }));
+      for (const { s, r, at } of open) {
+        if ((s.machine ?? null) !== on) continue;
+        // Not refreshed yet: match by folder.
+        let x = r ? (r.main === p.path ? profiles.find((y) => y.path === r.top) : null) : within(profiles, at);
+        // Checkout git didn't list (yet).
+        if (!x && r?.main === p.path) profiles.push(x = { path: r.top, branch: s.branch, main: r.top === p.path, spaces: [] });
+        x?.spaces.push(s);
+      }
+      for (const x of profiles) {
+        x.space = x.spaces.find((s) => s.active) ?? x.spaces[0] ?? null;
+        x.status = worst(x.spaces.map((s) => s.status));
+        if (!x.branch) x.branch = x.spaces.find((s) => s.branch)?.branch ?? null;
+      }
       return { path: p.path, machine: on, on, key, name: projectName(p), profiles, avatar: this.avatars[key] ?? null };
     });
   }
@@ -144,18 +152,22 @@ export class Sidebar {
   }
 
   // Opens a profile: its space if it has one, else a new space on its checkout.
+  // Several spaces: cycles.
   openProfile(p, x) {
-    if (x.space) run("space.select", { id: x.space.id });
+    const i = x.spaces?.findIndex((s) => s.active) ?? -1;
+    const next = i >= 0 ? x.spaces[(i + 1) % x.spaces.length] : x.space;
+    if (next) run("space.select", { id: next.id });
     else run("space.new", { folder: x.path, machine: p.on ?? "" });
   }
 
   openProject(p) {
     const shown = p.profiles.find((x) => x.space?.active) ?? p.profiles.find((x) => x.space) ?? p.profiles[0];
-    if (shown) this.openProfile(p, shown);
+    if (shown?.space) run("space.select", { id: shown.space.id });
+    else if (shown) this.openProfile(p, shown);
   }
 
   menu(kind, p, x) {
-    const target = { path: p.path, machine: p.on, name: p.name, ...(x ? { top: x.path, branch: x.branch, main: x.main, space: x.space?.id ?? null } : {}) };
+    const target = { path: p.path, machine: p.on, name: p.name, ...(x ? { top: x.path, branch: x.branch, main: x.main, space: x.space?.id ?? null, spaces: x.spaces.map((s) => s.id) } : {}) };
     openOverlay({ mod: "2code", kind: "popup", width: 230, height: kind === "project" ? 196 : 124, props: { part: "menu", kind, target } });
   }
 
@@ -168,7 +180,7 @@ export class Sidebar {
   projectRow(p, th) {
     const active = p.profiles.some((x) => x.space?.active);
     const open = !this.closed[p.key];
-    const status = worst(p.profiles.map((x) => x.space?.status));
+    const status = worst(p.profiles.map((x) => x.status));
     const hovered = this.hover === p.key;
     return h_flex().id(`project-${p.key}`).h(32).px(8).gap(8).items_center().rounded(6).cursor_pointer()
       .bg(active && !open ? th.selected : th.chrome).hover((s) => s.bg(th.hover))
@@ -209,7 +221,7 @@ export class Sidebar {
           .on_click((_e, cx) => { cx.stop_propagation(); deleteProfile(p, x); })
           .child(icon("x", 12))
         : div().w(18).flex_none().flex().items_center().justify_center()
-          .when(Boolean(dot(x.space?.status, th)), (el) => el.child(dot(x.space.status, th))));
+          .when(Boolean(dot(x.status, th)), (el) => el.child(dot(x.status, th))));
   }
 
   ring(id) {
@@ -252,7 +264,7 @@ export class Sidebar {
   rail(projects, th) {
     return v_flex().id("project-rail").flex_1().min_h(0).py(2).gap(6).items_center().overflow_y_scrollbar()
       .children(projects.map((p) => {
-        const active = p.profiles.some((x) => x.space?.active), status = worst(p.profiles.map((x) => x.space?.status));
+        const active = p.profiles.some((x) => x.space?.active), status = worst(p.profiles.map((x) => x.status));
         return div().id(`rail-${p.key}`).relative().p(4).rounded(7).cursor_pointer().bg(active ? th.selected : th.chrome).hover((s) => s.bg(th.hover))
           .on_click(() => this.openProject(p))
           .on_mouse_down("right", (_e, cx) => { cx.stop_propagation(); this.menu("project", p); })
@@ -305,10 +317,17 @@ export async function openNewProfile(p) {
   openOverlay({ mod: "worktree", kind: "dialog", width: 460, height: 280, props: { folder: p.path, machine: on, action: "new", ...setup } });
 }
 
+// Deepest checkout holding the folder.
+function within(profiles, at) {
+  if (!at) return null;
+  return profiles.filter((y) => at === y.path || at.startsWith(y.path + "/"))
+    .sort((a, b) => b.path.length - a.path.length)[0] ?? null;
+}
+
 export function newProfile(p, cx) {
   cx.spawn(async () => { await openNewProfile(p); });
 }
 
 export function deleteProfile(p, x) {
-  openOverlay({ mod: "2code", kind: "dialog", width: 480, height: 340, props: { part: "deleteProfile", main: p.path, top: x.path, branch: x.branch ?? null, space: x.space?.id ?? null, on: p.on ?? p.machine ?? null } });
+  openOverlay({ mod: "2code", kind: "dialog", width: 480, height: 340, props: { part: "deleteProfile", main: p.path, top: x.path, branch: x.branch ?? null, spaces: (x.spaces ?? (x.space ? [x.space] : [])).map((s) => s.id), on: p.on ?? p.machine ?? null } });
 }
