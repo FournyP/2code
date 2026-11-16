@@ -11,20 +11,14 @@ mkdir -p "$home/layouts" "$home/themes" "$home/mods"
 cp "$here/layouts/2code.json" "$here/layouts/2code.png" "$home/layouts/"
 cp "$here/themes/2code-light.json" "$here/themes/2code-dark.json" "$home/themes/"
 
-# Keep the avatar cache across reinstalls.
-cache=""
-if [ -d "$home/mods/2code/.cache" ]; then
-  cache=$(mktemp -d)
-  cp -R "$home/mods/2code/.cache" "$cache/"
-fi
 rm -rf "$home/mods/.2code.new"
 cp -R "$here/mods/2code" "$home/mods/.2code.new"
-[ -n "$cache" ] && cp -R "$cache/.cache" "$home/mods/.2code.new/" && rm -rf "$cache"
+# Keep the cache (avatars, recovery copies) across reinstalls.
+[ -d "$home/mods/2code/.cache" ] && mv "$home/mods/2code/.cache" "$home/mods/.2code.new/"
 rm -rf "$home/mods/2code"
 mv "$home/mods/.2code.new" "$home/mods/2code"
 
-# Adds the layout's keys (the "layout:2code" section of keys.json) to the
-# person's keys.json. Keys they already bound stay theirs. Note: Herdr treats
+# Adds keys.json's sections to the person's keys.json. Keys they already bound stay theirs. Note: Herdr treats
 # an edited keys.json as the person's and stops updating its defaults.
 merge='
 import json, os, sys

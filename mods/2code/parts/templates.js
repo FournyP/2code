@@ -3,12 +3,12 @@
 // it, in its folder, and types its commands after the project's init script.
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, theme, closeOverlay } from "herdr";
+import { theme } from "herdr";
 import { t } from "../lib/i18n.js";
 import { readProjectConfig, readGlobalConfig } from "../lib/config.js";
 import { repoOf } from "../lib/git.js";
 import { openTerminal, templateFolder } from "../lib/terminal.js";
-import { icon } from "../lib/ui.js";
+import { icon, runThenClose, MONO } from "../lib/ui.js";
 
 const preview = (commands) => !commands.length ? "" : commands.length === 1 ? commands[0] : `${commands[0]} +${commands.length - 1}`;
 
@@ -28,20 +28,12 @@ export class Templates {
   }
 
   pick(template, scope, cx) {
-    if (this.busy) return;
-    this.busy = true;
-    cx.notify();
-    const top = this.repo?.top;
-    cx.spawn(async (cx) => {
-      try {
-        await openTerminal(cx, {
-          space: this.p.space,
-          name: template.name,
-          folder: templateFolder(template, scope, top, this.p.cwd),
-          commands: [...(this.project?.init_script ?? []), ...template.commands],
-        });
-      } finally { closeOverlay(props().overlay); }
-    });
+    runThenClose(this, (cx) => openTerminal(cx, {
+      space: this.p.space,
+      name: template.name,
+      folder: templateFolder(template, scope, this.repo?.top, this.p.cwd),
+      commands: [...(this.project?.init_script ?? []), ...template.commands],
+    }), cx);
   }
 
   section(title, list, scope, th) {
@@ -54,7 +46,7 @@ export class Templates {
         .child(icon("terminal", 14).text_color(th.muted))
         .child(v_flex().min_w(0).flex_1()
           .child(div().truncate().text_color(th.foreground).child(tpl.name))
-          .child(div().truncate().text_size(11).text_color(th.dim).font_family("JetBrains Mono").child(preview(tpl.commands))))),
+          .child(div().truncate().text_size(11).text_color(th.dim).font_family(MONO).child(preview(tpl.commands))))),
     ];
   }
 

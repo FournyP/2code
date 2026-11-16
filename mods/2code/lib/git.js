@@ -26,6 +26,15 @@ export async function repoOf(folder, on) {
   return { main, top, name: main.split("/").pop(), linked: main !== top };
 }
 
+// The focused folder for the Files / Changes panels (a remote terminal's machine
+// when a terminal is focused). From Herdr's shipped `files` / `changes` mods.
+export function location() {
+  const space = spaces().find((s) => s.active), f = focused();
+  const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
+  const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
+  return { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
+}
+
 // The shown space, the focused folder there and its branch.
 export function here() {
   const space = spaces().find((s) => s.active), f = focused();

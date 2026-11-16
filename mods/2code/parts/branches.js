@@ -3,10 +3,11 @@
 // worktree has checked out, with ahead/behind counts.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { props, theme, closeOverlay } from "herdr";
+import { theme } from "herdr";
 import { t } from "../lib/i18n.js";
 import { git } from "../lib/git.js";
-import { icon } from "../lib/ui.js";
+import { checkouts } from "../lib/projects.js";
+import { icon, focusInput, listKey, closeSelf } from "../lib/ui.js";
 
 export class Branches {
   init(p, cx) {
@@ -15,19 +16,13 @@ export class Branches {
     this.input = InputState.new({ placeholder: t("searchBranches") });
     this.input.on("change", (_e, cx) => { this.at = 0; cx.notify(); });
     this.input.on("submit", (_e, cx) => this.pick(this.shown()[this.at], cx));
-    this.input.focus();
-    cx.timer.after(300, () => this.input.focus());
+    focusInput(this.input, cx);
     cx.spawn(async (cx) => {
       const { root, on } = p;
       const current = (await git(root, ["branch", "--show-current"], on)).out;
       const head = await git(root, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], on);
       const trunk = head.ok ? head.out.replace(/^origin\//, "") : null;
-      const wt = await git(root, ["worktree", "list", "--porcelain"], on);
-      const used = new Map();
-      for (const block of wt.out.split(/\n\n+/)) {
-        const path = /^worktree (.*)$/m.exec(block)?.[1], branch = /^branch refs\/heads\/(.*)$/m.exec(block)?.[1];
-        if (path && branch && path !== root) used.set(branch, path);
-      }
+      const used = new Map((await checkouts(root, on)).filter((c) => c.branch && c.path !== root).map((c) => [c.branch, c.path]));
       const locals = await git(root, ["for-each-ref", "refs/heads", "--sort=-committerdate", "--format=%(refname:short)%09%(upstream:track,nobracket)"], on);
       const list = locals.out.split("\n").filter(Boolean).map((l) => {
         const [name, track = ""] = l.split("\t");
@@ -58,15 +53,9 @@ export class Branches {
     cx.spawn(async (cx) => {
       const r = await git(this.p.root, b.remote ? ["switch", "--track", b.remote] : ["switch", b.name], this.p.on, 120_000);
       this.busy = false;
-      if (r.ok) closeOverlay(props().overlay);
+      if (r.ok) closeSelf();
       else { this.error = r.err; cx.notify(); }
     });
-  }
-
-  key(e, cx) {
-    const n = this.shown().length;
-    if (e.key === "escape") return closeOverlay(props().overlay);
-    if ((e.key === "down" || e.key === "up") && n) { this.at = (this.at + (e.key === "down" ? 1 : n - 1)) % n; cx.stop_propagation(); cx.notify(); }
   }
 
   render() {
@@ -74,7 +63,7 @@ export class Branches {
     const rows = this.shown();
     const tag = (text, color) => div().px(5).py(0.5).rounded(4).border_1().border_color(color + "55").text_size(10.5).text_color(color).child(text);
     return v_flex().id("branches").size_full().bg(th.popover).text_color(th.foreground).text_size(13)
-      .on_key_down((e, cx) => this.key(e, cx))
+      .on_key_down((e, cx) => listKey(this, e, cx, this.shown().length))
       .child(h_flex().px(14).pt(14).pb(8).gap(8).items_center()
         .child(icon("git-branch", 15).text_color(th.muted)).child(div().text_size(15).font_semibold().child(t("switchBranch"))))
       .child(h_flex().mx(14).px(10).gap(6).items_center().rounded(6).border_1().border_color(th.accent).bg(th.background)

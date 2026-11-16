@@ -1,21 +1,17 @@
 import { exec, window, appHome } from "herdr";
 import * as fs from "fs/promises";
 import { git } from "./git.js";
+import { CACHE } from "./ui.js";
 
 const platform = () => window()?.platform ?? "linux";
 
-// Shows a folder in Finder / Explorer / the desktop's file manager (this computer only).
-export async function reveal(path) {
+// Opens a folder in Finder / Explorer / the file manager, or a file in its
+// default app (this computer only).
+export async function openPath(path) {
   const p = platform();
   if (p === "macos") return exec("open", [path]);
   if (p === "windows") return exec("explorer.exe", [path.replace(/\//g, "\\")]);
   return exec("xdg-open", [path]);
-}
-
-// Opens a folder in an app: macOS by app name (`open -a`), elsewhere by command.
-export async function openWith(app, path) {
-  if (platform() === "macos" && app.mac) return exec("open", ["-a", app.mac, path]);
-  return exec(app.cmd, [path]);
 }
 
 // The GitHub owner of a checkout's origin, or null.
@@ -30,8 +26,8 @@ export async function githubOwner(path, on) {
 // Resolves with the path for image(), or null.
 export async function githubAvatar(owner) {
   if (!owner || !/^[A-Za-z0-9-]+$/.test(owner)) return null;
-  const dir = `${appHome()}/mods/2code/.cache/avatars`;
-  const rel = `mods/2code/.cache/avatars/${owner.toLowerCase()}.png`, abs = `${appHome()}/${rel}`;
+  const dir = `${appHome()}/${CACHE}/avatars`;
+  const rel = `${CACHE}/avatars/${owner.toLowerCase()}.png`, abs = `${appHome()}/${rel}`;
   if (await fs.exists(abs).catch(() => false)) return rel;
   try {
     // fetch() only reads text, so the picture comes down with curl (also on Windows 10+).

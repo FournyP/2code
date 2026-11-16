@@ -4,24 +4,14 @@
 // lines, comment, collect them, copy them for an agent.
 import { div, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, Scrollbar, v_virtual_list } from "gpui-base";
-import { props, theme, settings, shared, setShared, appHome, openOverlay, closeOverlay } from "herdr";
+import { theme, settings, shared, openOverlay } from "herdr";
 import { t } from "../lib/i18n.js";
-import { git, here } from "../lib/git.js";
-import { readChanges, fileDiff, commitFileDiff, unifiedRows, splitRows, commit, discard, ahead, push, history, commitFiles, isImage, imageVersions, imageSize, fit } from "../lib/changes.js";
-import { icon } from "../lib/ui.js";
+import { git, here, repoOf } from "../lib/git.js";
+import { readChanges, fileDiff, commitFileDiff, unifiedRows, splitRows, commit, discard, ahead, push, history, commitFiles, isImage, imageVersions, imageSize, fit, reviewList, setReviewList } from "../lib/changes.js";
+import { icon, closeSelf, errText, MONO } from "../lib/ui.js";
 import { badge, checkbox } from "./changes.js";
 
 const ROW = 20;
-
-export function reviewList(root) {
-  const all = shared("2code.review");
-  return (all && typeof all === "object" && Array.isArray(all[root])) ? all[root] : [];
-}
-export function setReviewList(root, list) {
-  const all = { ...(shared("2code.review") ?? {}) };
-  if (list.length) all[root] = list; else delete all[root];
-  setShared("2code.review", all);
-}
 
 export class Diff {
   init(p, cx) {
@@ -44,9 +34,8 @@ export class Diff {
     this.handle.focus();
     this.shift = false;
     cx.spawn(async (cx) => {
-      const top = await git(cwd, ["rev-parse", "--show-toplevel"], on);
-      if (!top.ok) { this.error = t("notGit"); cx.notify(); return; }
-      this.root = top.out;
+      this.root = (await repoOf(cwd, on))?.top;
+      if (!this.root) { this.error = t("notGit"); cx.notify(); return; }
       this.branch = (await git(this.root, ["branch", "--show-current"], on)).out || "HEAD";
       await this.reload(cx);
     });
@@ -61,7 +50,7 @@ export class Diff {
       if (this.tab === "history" && !this.commits.length) this.commits = await history(this.root, this.on);
       if (this.tab === "changes" && this.file && !this.commit && !files.some((f) => f.path === this.file.path)) this.showFile(null);
       if (this.tab === "changes" && !this.file && files.length) await this.openFile(files[0], cx);
-    } catch (e) { this.error = String(e?.message ?? e); }
+    } catch (e) { this.error = errText(e); }
     cx.notify();
   }
 
@@ -75,10 +64,7 @@ export class Diff {
     if (!f) return;
     try {
       if (isImage(f.path) && !this.on) {
-        const cacheRel = "mods/2code/.cache/diff", cacheDir = `${appHome()}/${cacheRel}`;
-        this.images = this.commit
-          ? await imageVersions(this.root, cacheDir, cacheRel, f, `${this.commit.hash}^`, this.commit.hash)
-          : await imageVersions(this.root, cacheDir, cacheRel, f, "HEAD");
+        this.images = await imageVersions(this.root, f, this.commit ? `${this.commit.hash}^` : "HEAD", this.commit?.hash);
         for (const k of ["before", "after"]) if (this.images[k]) this.images[k] = { rel: this.images[k], ...fit(await imageSize(this.images[k]), 360, 220) };
       }
       const d = this.commit ? await commitFileDiff(this.root, this.on, this.commit.hash, f) : await fileDiff(this.root, this.on, f, this.hasHead);
@@ -117,7 +103,7 @@ export class Diff {
     this.busy = true; this.error = null;
     cx.spawn(async (cx) => {
       try { await work(); }
-      catch (e) { this.error = t(failKey, { error: String(e?.message ?? e) }); }
+      catch (e) { this.error = t(failKey, { error: errText(e) }); }
       finally { this.busy = false; await this.reload(cx); }
     });
     cx.notify();
@@ -210,7 +196,7 @@ export class Diff {
     if (!this.file) return div().p(16).text_color(th.dim).child(this.tab === "history" && !this.commit ? t("pickCommit") : t("selectFile"));
     const lo = this.sel ? Math.min(this.sel.a, this.sel.b) : -1, hi = this.sel ? Math.max(this.sel.a, this.sel.b) : -2;
     const inSel = (r) => r && r.idx >= lo && r.idx <= hi;
-    const font = settings().font_family ?? "JetBrains Mono";
+    const font = settings().font_family ?? MONO;
     return v_flex().flex_1().min_h(0)
       .when(Boolean(this.images), (el) => el.child(h_flex().p(12).gap(12).items_start().border_b(1).border_color(th.border)
         .children([["before", t("before")], ["after", t("after")]].map(([k, label]) => v_flex().flex_1().min_w(0).gap(6)
@@ -292,7 +278,7 @@ export class Diff {
       .children(this.commits.map((c) => v_flex().id(`c-${c.hash}`).mx(4).px(8).py(6).gap(2).rounded(4).cursor_pointer().hover((s) => s.bg(th.hover))
         .on_click((_e, cx) => this.pickCommit(c, cx))
         .child(div().truncate().text_color(th.foreground).child(c.subject))
-        .child(h_flex().gap(6).text_size(11).text_color(th.dim).child(div().font_family("JetBrains Mono").child(c.short)).child(div().truncate().child(`${c.author} · ${c.when}`)))))
+        .child(h_flex().gap(6).text_size(11).text_color(th.dim).child(div().font_family(MONO).child(c.short)).child(div().truncate().child(`${c.author} · ${c.when}`)))))
       .when(!this.commits.length, (el) => el.child(div().p(10).text_size(12).text_color(th.dim).child(t("noCommits"))));
   }
 
@@ -320,7 +306,7 @@ export class Diff {
           .child(seg("v-unified", t("unified"), this.view === "unified", (_e, cx) => { this.setView("unified"); cx.notify(); }, "rows"))
           .child(seg("v-split", t("split"), this.view === "split", (_e, cx) => { this.setView("split"); cx.notify(); }, "columns")))
         .child(div().id("close").size(26).flex().items_center().justify_center().rounded(6).cursor_pointer().text_color(th.dim).hover((s) => s.bg(th.hover))
-          .on_click(() => closeOverlay(props().overlay)).child(icon("x", 14))))
+          .on_click(closeSelf).child(icon("x", 14))))
       .child(h_flex().flex_1().min_h(0)
         .child(v_flex().w(360).flex_none().h_full().border_r(1).border_color(th.border)
           .child(this.tab === "changes" ? this.changesList(th) : this.historyList(th)))

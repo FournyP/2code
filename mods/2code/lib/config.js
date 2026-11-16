@@ -35,7 +35,7 @@ export const readGlobalConfig = () => read(globalConfigPath(), null);
 export const readProjectConfig = (top, on) => (top ? read(`${top}/2code.json`, on) : Promise.resolve({ ...normalize(null), missing: true }));
 
 // A POSIX-quoted word for sh.
-export const quote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+const quote = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 
 // What a setup tab runs: every line, in order, stopping at the first failure,
 // like 2code's own runner (each line its own `sh -c`).

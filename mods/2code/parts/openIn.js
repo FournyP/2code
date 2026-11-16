@@ -2,10 +2,9 @@
 // computer has, as 2code's top bar offered them. macOS finds apps in
 // /Applications; elsewhere by their command on PATH.
 import { div } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
-import { props, theme, exec, window, closeOverlay } from "herdr";
+import { theme, exec, window } from "herdr";
 import { t } from "../lib/i18n.js";
-import { icon } from "../lib/ui.js";
+import { menu, runThenClose } from "../lib/ui.js";
 
 const APPS = [
   { name: "VS Code", mac: "Visual Studio Code", cmd: "code" },
@@ -47,22 +46,11 @@ export class OpenIn {
     cx.spawn(async (cx) => { this.apps = await installed(); cx.notify(); });
   }
 
-  pick(app, cx) {
-    if (this.busy) return;
-    this.busy = true; cx.notify();
-    cx.spawn(async () => {
-      try { await open(app, this.p.path); } finally { closeOverlay(props().overlay); }
-    });
-  }
-
   render() {
     const th = theme();
     if (this.busy) return div();
-    return v_flex().id("open-in").size_full().p(4).gap(1).bg(th.popover).text_color(th.foreground).text_size(13)
-      .child(div().px(8).pt(4).pb(2).text_size(11).text_color(th.dim).child(t("openIn")))
-      .children((this.apps ?? []).map((app, i) => h_flex().id(`app-${i}`).h(30).px(8).gap(8).items_center().rounded(5).cursor_pointer()
-        .hover((s) => s.bg(th.hover)).on_click((_e, cx) => this.pick(app, cx))
-        .child(icon("external-link", 13).text_color(th.muted)).child(div().flex_1().truncate().child(app.name))))
+    const items = (this.apps ?? []).map((app) => ["external-link", app.name, () => open(app, this.p.path)]);
+    return menu("open-in", th, items, (action, cx) => runThenClose(this, action, cx), { header: t("openIn"), iconSize: 13 })
       .when(this.apps === null, (el) => el.child(div().px(8).py(6).text_color(th.dim).child("…")))
       .when(this.apps?.length === 0, (el) => el.child(div().px(8).py(6).text_size(12).text_color(th.dim).child(t("noApps"))));
   }

@@ -3,18 +3,18 @@
 // opens one in its own tab.
 import { div, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { props, theme, settings, exec, closeOverlay } from "herdr";
+import { theme, settings, exec } from "herdr";
 import { t } from "../lib/i18n.js";
-import { git, READ } from "../lib/git.js";
+import { READ, repoOf } from "../lib/git.js";
 import { fileIcon } from "../lib/fileIcons.js";
 import { openFile } from "../lib/editor.js";
-import { icon } from "../lib/ui.js";
+import { icon, focusInput, runThenClose, listKey } from "../lib/ui.js";
 
 const LIMIT = 200;
 
 // Subsequence match: consecutive letters, word starts and the file name score
 // higher; shorter paths win ties. Null when the query isn't in the path.
-export function score(query, path) {
+function score(query, path) {
   if (!query) return 0;
   const q = query.toLowerCase(), p = path.toLowerCase(), base = p.lastIndexOf("/") + 1;
   let s = 0, at = -1, run = 0;
@@ -36,12 +36,11 @@ export class Finder {
     this.input = InputState.new({ placeholder: t("findPlaceholder") });
     this.input.on("change", (_e, cx) => { this.at = 0; cx.notify(); });
     this.input.on("submit", (_e, cx) => this.pick(this.shown()[this.at], cx));
-    this.input.focus();
-    cx.timer.after(200, () => this.input.focus());
+    focusInput(this.input, cx, 200);
     cx.spawn(async (cx) => {
-      const top = await git(p.cwd, ["rev-parse", "--show-toplevel"], p.on);
-      this.root = top.ok ? top.out : p.cwd;
-      const r = top.ok
+      const top = (await repoOf(p.cwd, p.on))?.top;
+      this.root = top ?? p.cwd;
+      const r = top
         ? await exec("git", [...READ, "ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: this.root, on: p.on })
         : await exec("sh", ["-c", 'cd "$1" && find . -type f -not -path "*/.git/*" -not -path "*/node_modules/*" | head -20000 | sed "s|^\\./||" | tr "\\n" "\\0"', "x", this.root], { on: p.on });
       this.files = [...new Set(r.stdout.split("\0").filter(Boolean))];
@@ -59,21 +58,7 @@ export class Finder {
   }
 
   pick(file, cx) {
-    if (!file || this.busy) return;
-    this.busy = true; cx.notify();
-    cx.spawn(async (cx) => {
-      try { await openFile(cx, { space: this.p.space, path: `${this.root}/${file}`, on: this.p.on, root: this.root }); }
-      finally { closeOverlay(props().overlay); }
-    });
-  }
-
-  key(e, cx) {
-    const n = this.shown().length;
-    if (e.key === "escape") return closeOverlay(props().overlay);
-    if ((e.key === "down" || e.key === "up") && n) {
-      this.at = (this.at + (e.key === "down" ? 1 : n - 1)) % n;
-      cx.stop_propagation(); cx.notify();
-    }
+    if (file) runThenClose(this, (cx) => openFile(cx, { space: this.p.space, path: `${this.root}/${file}`, on: this.p.on, root: this.root }), cx);
   }
 
   render() {
@@ -81,7 +66,7 @@ export class Finder {
     if (this.busy) return div();
     const rows = this.shown();
     return v_flex().id("finder").size_full().bg(th.popover).text_color(th.foreground).text_size(13)
-      .on_key_down((e, cx) => this.key(e, cx))
+      .on_key_down((e, cx) => listKey(this, e, cx, this.shown().length))
       .child(h_flex().h(44).px(14).gap(8).items_center().border_b(1).border_color(th.border)
         .child(icon("search", 15).text_color(th.dim))
         .child(div().flex_1().child(Input.new(this.input).h(32).text_size(14).text_color(th.foreground))))

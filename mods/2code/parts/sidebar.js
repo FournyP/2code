@@ -60,8 +60,6 @@ export class SidebarHeader {
 }
 
 export class Sidebar {
-  static COMMANDS = ["focusSidebar"];
-
   command(name) {
     if (name === "focusSidebar") this.handle.focus();
   }
@@ -220,10 +218,10 @@ export class Sidebar {
       .child(this.avatar(p, th))
       .child(div().flex_1().min_w(0).truncate().text_color(th.foreground).child(p.name))
       // The project's dot sums up its worktrees, so it shows only while they're folded away.
-      .when(!open && !hovered && Boolean(dot(status, th)), (el) => el.child(dot(status, th)))
+      .when(!open && !hovered, (el) => el.children([dot(status, th)].filter(Boolean)))
       .when(hovered && !group, (el) => el.child(div().id(`profile-new-${p.key}`).size(20).flex().items_center().justify_center().rounded(5)
         .text_color(th.dim).hover((s) => s.bg(th.raised).text_color(th.foreground))
-        .on_click((_e, cx) => { cx.stop_propagation(); newProfile(p, cx); })
+        .on_click((_e, cx) => { cx.stop_propagation(); cx.spawn(async () => openNewProfile(p)); })
         .child(icon("plus", 13))))
       .child(div().id(`project-caret-${p.key}`).size(18).flex().items_center().justify_center().text_color(th.dim)
         .on_click((_e, cx) => { cx.stop_propagation(); this.toggle(p.key); cx.notify(); })
@@ -250,7 +248,7 @@ export class Sidebar {
           .on_click((_e, cx) => { cx.stop_propagation(); deleteProfile(p, x); })
           .child(icon("x", 12))
         : div().w(18).flex_none().flex().items_center().justify_center()
-          .when(Boolean(dot(x.status, th)), (el) => el.child(dot(x.status, th))));
+          .children([dot(x.status, th)].filter(Boolean)));
   }
 
   ring(id) {
@@ -367,10 +365,6 @@ function within(profiles, at) {
   if (!at) return null;
   return profiles.filter((y) => at === y.path || at.startsWith(y.path + "/"))
     .sort((a, b) => b.path.length - a.path.length)[0] ?? null;
-}
-
-export function newProfile(p, cx) {
-  cx.spawn(async () => { await openNewProfile(p); });
 }
 
 export function deleteProfile(p, x) {

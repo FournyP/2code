@@ -5,23 +5,17 @@
 // (Apache-2.0, see ../NOTICE).
 import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, Scrollbar, v_virtual_list } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, settings, shared, openOverlay } from "herdr";
+import { exec, watchFolder, theme, settings, shared, openOverlay } from "herdr";
 import { t, locale } from "../lib/i18n.js";
 import { readChanges, fileDiff, unifiedRows, commit, discard, ahead, push } from "../lib/changes.js";
-import { ICON, icon } from "../lib/ui.js";
-import { READ } from "../lib/git.js";
+import { ICON, icon, errText, MONO } from "../lib/ui.js";
+import { READ, location, repoOf } from "../lib/git.js";
 import { childRepos } from "../lib/projects.js";
 
-function location() {
-  const space = spaces().find((s) => s.active), f = focused();
-  const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
-  const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on };
-}
-const key = () => JSON.stringify(location());
+const key = () => { const { cwd, on } = location(); return JSON.stringify({ cwd, on }); };
 
 // 2code's square badges: added green, modified / renamed blue, deleted and conflicted red.
-export const badgeColor = (status, th) => (status === "A" ? th.ansi2 : status === "M" || status === "R" ? th.ansi4 : th.ansi1);
+const badgeColor = (status, th) => (status === "A" ? th.ansi2 : status === "M" || status === "R" ? th.ansi4 : th.ansi1);
 
 export function badge(status, th) {
   const color = badgeColor(status, th);
@@ -105,10 +99,9 @@ export class Changes {
     this.loading = true;
     cx.spawn(async (cx) => {
       try {
-        const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on });
+        let root = (await repoOf(cwd, on))?.top;
         if (stale()) return;
-        let root = top.stdout.trim();
-        if (top.code !== 0) {
+        if (!root) {
           // A group folder: its child repos, one shown at a time. Counts at most every 10s.
           if (!this.repos || Date.now() - this.counted > 9000) {
             const kids = await childRepos(cwd, on);
@@ -134,7 +127,7 @@ export class Changes {
         this.watch(root, cx);
         if (this.open && !files.some((f) => f.path === this.open)) { this.open = null; this.rows = []; }
         if (this.open) await this.load(this.open, context);
-      } catch (e) { if (!stale()) this.error = String(e?.message ?? e); }
+      } catch (e) { if (!stale()) this.error = errText(e); }
       finally { this.loading = false; cx.notify(); if (this.again) this.refresh(cx); }
     });
   }
@@ -197,7 +190,7 @@ export class Changes {
     this.busy = true; this.note = null;
     cx.spawn(async (cx) => {
       try { await work(); }
-      catch (e) { if (key() === context) this.note = String(e?.message ?? e); }
+      catch (e) { if (key() === context) this.note = errText(e); }
       finally { this.busy = false; this.refresh(cx); cx.notify(); }
     });
     cx.notify();
@@ -209,7 +202,7 @@ export class Changes {
     const body = this.bodyState.value().trim(), all = picked.length === this.files.length, root = this.root, on = this.on;
     this.act(cx, async () => {
       try { await commit(root, on, picked.flatMap((f) => (f.from ? [f.from, f.path] : [f.path])), all, summary, body); }
-      catch (e) { throw new Error(t("commitFailed", { error: String(e?.message ?? e) })); }
+      catch (e) { throw new Error(t("commitFailed", { error: errText(e) })); }
       this.summary = ""; this.summaryState.set_value(""); this.bodyState.set_value(""); this.excluded = new Set();
     });
   }
@@ -221,7 +214,7 @@ export class Changes {
     const root = this.root, on = this.on, hasHead = this.hasHead;
     this.act(cx, async () => {
       try { await discard(root, on, f, hasHead); }
-      catch (e) { throw new Error(t("discardFailed", { error: String(e?.message ?? e) })); }
+      catch (e) { throw new Error(t("discardFailed", { error: errText(e) })); }
     });
   }
 
@@ -229,7 +222,7 @@ export class Changes {
     const root = this.root, on = this.on, upstream = this.ahead.upstream;
     this.act(cx, async () => {
       try { await push(root, on, upstream); }
-      catch (e) { throw new Error(t("pushFailed", { error: String(e?.message ?? e) })); }
+      catch (e) { throw new Error(t("pushFailed", { error: errText(e) })); }
     });
   }
 
@@ -290,7 +283,7 @@ export class Changes {
           .when(!this.files.length, (e) => e.child(div().p(10).text_size(12).text_color(th.dim).child(this.error || (this.loading && !this.root ? t("changesLoading") : this.root ? t("noChanges") : t("noFolder"))))))
         .child(Scrollbar.vertical("changes-list").absolute().inset_0()))
       .when(this.limited, (el) => el.child(div().px(12).py(4).text_size(11).text_color(th.dim).child(t("changesLimited"))))
-      .when(Boolean(this.open), (el) => el.child(div().flex_1().min_h(0).relative().border_t(1).border_color(th.border).font_family(settings().font_family ?? "JetBrains Mono").text_size(11)
+      .when(Boolean(this.open), (el) => el.child(div().flex_1().min_h(0).relative().border_t(1).border_color(th.border).font_family(settings().font_family ?? MONO).text_size(11)
         .child(div().id("changes-diff-x").size_full().overflow_x_scrollbar()
           .child(div().w_full().min_w(this.diffWidth).h_full().child(v_virtual_list("changes-diff", this.rows.length, 20, (i) => String(i),
             (range) => this.rows.slice(range.start, range.end).map((row) => this.diffRow(row, th))).size_full())))

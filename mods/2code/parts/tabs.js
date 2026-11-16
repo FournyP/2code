@@ -13,8 +13,6 @@ import { icon, dot } from "../lib/ui.js";
 import { openDiffDialog } from "./changes.js";
 
 export class Tabs {
-  static COMMANDS = ["newTerminal", "diff", "find"];
-
   command(name, cx) {
     if (name === "newTerminal") this.newTerminal(cx);
     if (name === "diff") openDiffDialog();
@@ -73,7 +71,7 @@ export class Tabs {
       })
       .child(glyph)
       .child(div().min_w(0).truncate().child(name))
-      .when(Boolean(dot(c.status, th)), (el) => el.child(dot(c.status, th)))
+      .children([dot(c.status, th)].filter(Boolean))
       .when(unsaved, (el) => el.child(div().size(7).rounded(4).bg(th.foreground).flex_none()))
       .child(div().id(`tab-close-${c.id}`).size(16).flex().items_center().justify_center().rounded(4).text_color(th.dim)
         .hover((s) => s.bg(th.hover).text_color(th.foreground))

@@ -4,19 +4,13 @@
 // ../NOTICE); changed to 2code's flat look and behavior, translated text.
 import { div, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { spaces, panes, focused, exec, watchFolder, theme, settings, window, shared, openOverlay } from "herdr";
+import { spaces, exec, watchFolder, theme, settings, window, shared, openOverlay } from "herdr";
 import { t } from "../lib/i18n.js";
-import { READ } from "../lib/git.js";
+import { READ, location, repoOf } from "../lib/git.js";
 import { icon } from "../lib/ui.js";
 import { fileIcon } from "../lib/fileIcons.js";
 import { openFile } from "../lib/editor.js";
 
-function location() {
-  const space = spaces().find((s) => s.active), f = focused();
-  const pane = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
-  const on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : space?.machine ?? null;
-  return { cwd: pane?.cwd || f?.cwd || space?.folder, on, space: space?.id };
-}
 const key = () => JSON.stringify(location());
 const PER_FOLDER = 500, TOTAL = 5000;
 
@@ -58,7 +52,7 @@ export class Files {
     this.watched = root;
     const context = this.context;
     cx.spawn(async (cx) => {
-      try { while (this.context === context) { await watchFolder(root); if (this.current(context)) this.refresh(cx); } }
+      try { while (this.context === context) { await (this.watchHandle = watchFolder(root)); if (this.current(context)) this.refresh(cx); } }
       catch { if (this.context === context) this.watched = null; }
     });
   }
@@ -80,6 +74,7 @@ export class Files {
     const { cwd, on } = location(), next = key();
     if (next !== this.context?.key) {
       if (this.context) this.saved.set(this.context.key, { folders: this.folders });
+      this.watchHandle?.cancel(); this.watchHandle = null;
       const saved = this.saved.get(next);
       this.context = { key: next, cwd, on }; this.root = cwd; this.on = on; this.entries = new Map(); this.folders = new Set(saved?.folders);
       this.pending = new Set(); this.marks = {}; this.dirty = new Set(); this.ignored = new Set(); this.watched = null; this.error = null; this.limited = false;
@@ -95,10 +90,9 @@ export class Files {
           if (!this.current(context)) return;
           await this.loadFolder(path, context);
         }
-        const top = await exec("git", ["rev-parse", "--show-toplevel"], { cwd, on }).catch(() => null);
+        const root = (await repoOf(cwd, on).catch(() => null))?.top;
         const marks = {}, dirty = new Set(), ignored = new Set();
-        if (top?.code === 0) {
-          const root = top.stdout.trim();
+        if (root) {
           // Ignored files and folders (folders end with "/"), to dim them.
           const ign = await exec("git", [...READ, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"], { cwd: root, on }).catch(() => null);
           if (ign?.code === 0) for (const p of ign.stdout.split("\0").filter(Boolean).slice(0, TOTAL)) ignored.add(`${root}/${p.replace(/\/$/, "")}`);

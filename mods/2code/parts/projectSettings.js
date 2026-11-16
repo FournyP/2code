@@ -3,10 +3,10 @@
 // templates in ~/2code/2code.json. Fields 2code doesn't know are kept.
 import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
-import { props, theme, readTextFile, writeTextFile, exec, window, closeOverlay } from "herdr";
+import { theme, readTextFile, writeTextFile, exec, window } from "herdr";
 import { t } from "../lib/i18n.js";
 import { globalConfigPath } from "../lib/config.js";
-import { button, icon } from "../lib/ui.js";
+import { button, icon, closeSelf, errText, MONO } from "../lib/ui.js";
 
 const lines = (text) => text.split("\n").map((l) => l.trim()).filter(Boolean);
 const SCRIPTS = [["setup_script", "setupScript", "setupScriptDesc"], ["teardown_script", "teardownScript", "teardownScriptDesc"], ["init_script", "initScript", "initScriptDesc"]];
@@ -97,16 +97,16 @@ export class ProjectSettings {
         if (!this.files.global.error) {
           await this.write("global", { ...this.files.global.data, terminal_templates: this.templateJson(this.templates.global, false) });
         }
-        closeOverlay(props().overlay);
+        closeSelf();
       } catch (e) {
-        this.error = t("saveFailed", { error: String(e?.message ?? e) });
+        this.error = t("saveFailed", { error: errText(e) });
       } finally { this.saving = false; cx.notify(); }
     });
   }
 
   field(th, child, { mono = false } = {}) {
     return div().w_full().px(10).rounded(6).border_1().border_color(th.input).bg(th.background).cursor_text()
-      .when(mono, (el) => el.font_family("JetBrains Mono"))
+      .when(mono, (el) => el.font_family(MONO))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(child);
   }
 
@@ -156,7 +156,7 @@ export class ProjectSettings {
         .children(errors.map((e) => div().text_size(12).text_color(th.ansi1).child(e))))
       .child(h_flex().px(18).py(12).gap(8).items_center().border_t(1).border_color(th.border)
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(th.ansi1).child(this.error ?? ""))
-        .child(button("cancel", th, t("cancel"), () => closeOverlay(props().overlay)))
+        .child(button("cancel", th, t("cancel"), closeSelf))
         .child(button("save", th, this.saving ? t("saving") : t("save"), (_e, cx) => this.save(cx), { primary: true, disabled: this.loading || this.saving })));
   }
 }

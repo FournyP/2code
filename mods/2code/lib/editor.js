@@ -8,7 +8,7 @@ import { spaces, run, shared, setShared } from "herdr";
 export const fileKey = (path, on) => `${on ?? ""}:${path}`;
 export const baseName = (path) => path.split(/[\\/]/).pop() || path;
 
-export function editorTabs() {
+function editorTabs() {
   const v = shared("2code.editors");
   return v && typeof v === "object" ? v : {};
 }

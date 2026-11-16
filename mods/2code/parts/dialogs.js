@@ -1,21 +1,11 @@
 // Small project dialogs: rename and remove.
 import { div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { props, theme, spaces, run, closeOverlay } from "herdr";
+import { InputState } from "gpui-base";
+import { theme, spaces, run } from "herdr";
 import { t } from "../lib/i18n.js";
 import { renameProject, removeProject, projectName } from "../lib/projects.js";
 import { place, repoOf } from "../lib/git.js";
-import { button } from "../lib/ui.js";
-
-const close = () => closeOverlay(props().overlay);
-
-function frame(th, title, body, actions) {
-  return v_flex().size_full().p(18).gap(12).bg(th.popover).text_color(th.foreground).text_size(13)
-    .child(div().text_size(15).font_semibold().child(title))
-    .children(body)
-    .child(div().flex_1())
-    .child(h_flex().gap(8).justify_end().children(actions));
-}
+import { button, frame, field, focusInput, closeSelf as close } from "../lib/ui.js";
 
 export class Rename {
   init(p, cx) {
@@ -23,8 +13,7 @@ export class Rename {
     const derived = projectName({ path: p.path });
     this.input = InputState.new({ value: p.name ?? "", placeholder: derived });
     this.input.on("submit", () => this.save());
-    this.input.focus();
-    cx.timer.after(300, () => this.input.focus());
+    focusInput(this.input, cx);
   }
 
   save() {
@@ -38,9 +27,9 @@ export class Rename {
     const th = theme();
     return frame(th, t("rename"), [
       div().text_size(12).text_color(th.muted).child(t("projectName")),
-      div().px(10).rounded(6).border_1().border_color(th.accent).bg(th.background).child(Input.new(this.input).h(32).text_size(13).text_color(th.foreground)),
+      field(this.input, th),
       div().text_size(11.5).text_color(th.dim).child(t("namePlaceholder")),
-    ], [button("cancel", th, t("cancel"), close), button("save", th, t("save"), () => this.save(), { primary: true })]);
+    ], [button("cancel", th, t("cancel"), close), button("save", th, t("save"), () => this.save(), { primary: true })], 12);
   }
 }
 
@@ -73,6 +62,6 @@ export class RemoveProject {
     return frame(th, t("removeProjectTitle", { name: this.p.name }), [
       div().text_color(th.muted).child(t("removeProjectBody", { name: this.p.name })),
       div().text_size(12).text_color(th.dim).child(this.spaces === null ? "…" : t("openSpaces", { count: this.spaces.length })),
-    ], [button("cancel", th, t("cancel"), close), button("remove", th, t("remove"), () => this.remove(), { primary: true, disabled: this.spaces === null })]);
+    ], [button("cancel", th, t("cancel"), close), button("remove", th, t("remove"), () => this.remove(), { primary: true, disabled: this.spaces === null })], 12);
   }
 }

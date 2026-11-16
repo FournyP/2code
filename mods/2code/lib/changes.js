@@ -1,15 +1,30 @@
 // Git work shared by the Changes panel and the diff dialog: what changed,
 // a file's diff, commits, discard, push, history. Parts of the status and diff
 // reading come from Herdr's shipped `changes` mod (Apache-2.0, see ../NOTICE).
-import { exec, readTextFile, appHome } from "herdr";
+import { exec, readTextFile, appHome, shared, setShared } from "herdr";
 import * as fs from "fs/promises";
 import { git, READ } from "./git.js";
+import { CACHE } from "./ui.js";
 
 export const countLines = (text) => (text ? text.split("\n").length - Number(text.endsWith("\n")) : 0);
 // Text draws a tab as nothing: pad each to the next 4-column stop.
 const untab = (text) => text.replace(/[^\t]*\t/g, (s) => s.slice(0, -1).padEnd((s.length - 1) - (s.length - 1) % 4 + 4));
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i;
 export const isImage = (path) => IMAGE.test(path);
+
+// -z numstat ("a\td\tpath\0", or "a\td\t\0old\0new\0" for a rename), added into `stats`.
+function addNumstat(text, stats) {
+  const parts = text.split("\0");
+  for (let i = 0; i < parts.length; i++) {
+    const [a, d, path] = parts[i].split("\t");
+    if (a === undefined || d === undefined) continue;
+    const name = path || parts[(i += 2)];
+    if (!name) continue;
+    const old = stats[name] ?? { add: 0, del: 0 };
+    stats[name] = { add: old.add + (Number(a) || 0), del: old.del + (Number(d) || 0), binary: a === "-" };
+  }
+  return stats;
+}
 
 // The working tree's changes: [{ path, from?, status: A|M|D|R|U, fresh, add, del, binary }].
 export async function readChanges(root, on, limit = 1000) {
@@ -23,16 +38,7 @@ export async function readChanges(root, on, limit = 1000) {
     : [await run(["diff", "--cached", "--numstat", "-z"]), await run(["diff", "--numstat", "-z"])];
   for (const result of results) {
     if (result.code !== 0) throw new Error(result.stderr);
-    // -z numstat: "a\td\tpath\0", or "a\td\t\0old\0new\0" for a rename.
-    const parts = result.stdout.split("\0");
-    for (let i = 0; i < parts.length; i++) {
-      const [a, d, path] = parts[i].split("\t");
-      if (a === undefined || d === undefined) continue;
-      const name = path || parts[(i += 2)];
-      if (!name) continue;
-      const old = stats[name] ?? { add: 0, del: 0 };
-      stats[name] = { add: old.add + (Number(a) || 0), del: old.del + (Number(d) || 0), binary: a === "-" };
-    }
+    addNumstat(result.stdout, stats);
   }
   const entries = status.stdout.split("\0");
   const files = [];
@@ -153,14 +159,7 @@ export async function history(root, on, count = 200) {
 export async function commitFiles(root, on, hash) {
   const names = await git(root, ["show", hash, "--format=", "--name-status", "--find-renames", "-z"], on);
   const nums = await git(root, ["show", hash, "--format=", "--numstat", "--find-renames", "-z"], on);
-  const stats = {};
-  const np = nums.out.split("\0");
-  for (let i = 0; i < np.length; i++) {
-    const [a, d, path] = np[i].split("\t");
-    if (a === undefined || d === undefined) continue;
-    const name = path || np[(i += 2)];
-    if (name) stats[name] = { add: Number(a) || 0, del: Number(d) || 0, binary: a === "-" };
-  }
+  const stats = addNumstat(nums.out, {});
   const out = [], parts = names.out.split("\0").filter((x) => x !== "");
   for (let i = 0; i < parts.length; i++) {
     const code = parts[i];
@@ -173,11 +172,11 @@ export async function commitFiles(root, on, hash) {
 
 // For image diffs: writes the old (HEAD or a commit's parent) and new versions
 // into the mod's hidden cache and returns paths for image(). This computer only.
-export async function imageVersions(root, cacheDir, cacheRel, file, rev = "HEAD", next = null) {
+export async function imageVersions(root, file, rev = "HEAD", next = null) {
   const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const ext = file.path.split(".").pop();
+  const ext = file.path.split(".").pop(), cacheRel = `${CACHE}/diff`, cacheDir = `${appHome()}/${cacheRel}`;
   const before = `${cacheDir}/${id}-a.${ext}`, after = `${cacheDir}/${id}-b.${ext}`;
-  await exec("mkdir", ["-p", cacheDir]);
+  await fs.mkdir(cacheDir, { recursive: true });
   const out = {};
   if (file.status !== "A") {
     const r = await exec("sh", ["-c", 'git show "$1:$2" > "$3"', "x", rev, file.from ?? file.path, before], { cwd: root });
@@ -214,4 +213,15 @@ export function fit(size, maxW, maxH) {
   if (!size?.w || !size?.h) return { w: maxW, h: maxH };
   const k = Math.min(1, maxW / size.w, maxH / size.h);
   return { w: Math.max(1, Math.round(size.w * k)), h: Math.max(1, Math.round(size.h * k)) };
+}
+
+// Review comments waiting to go to an agent, per checkout (shared `2code.review`).
+export function reviewList(root) {
+  const all = shared("2code.review");
+  return (all && typeof all === "object" && Array.isArray(all[root])) ? all[root] : [];
+}
+export function setReviewList(root, list) {
+  const all = { ...(shared("2code.review") ?? {}) };
+  if (list.length) all[root] = list; else delete all[root];
+  setShared("2code.review", all);
 }

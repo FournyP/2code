@@ -7,7 +7,8 @@ import { run, theme, layout, readTextFile, shared, openOverlay, exec, window, se
 import { savedProjects, projectName } from "../lib/projects.js";
 import { t } from "../lib/i18n.js";
 import { git, repoOf, here, READ } from "../lib/git.js";
-import { reveal } from "../lib/os.js";
+import { openPath } from "../lib/os.js";
+import { countLines } from "../lib/changes.js";
 import { icon, stop, find } from "../lib/ui.js";
 
 const PR_EVERY = 60_000;
@@ -46,7 +47,7 @@ export class Topbar {
           const fresh = await git(repo.top, [...READ, "ls-files", "--others", "--exclude-standard"], on);
           for (const path of fresh.out.split("\n").filter(Boolean).slice(0, 50)) {
             const text = await readTextFile(`${repo.top}/${path}`, { on }).catch(() => null);
-            if (text && !text.includes("\0")) add += text.split("\n").length - Number(text.endsWith("\n"));
+            if (text && !text.includes("\0")) add += countLines(text);
           }
           await this.pullRequest(repo.top, branch, on);
         }
@@ -130,7 +131,7 @@ export class Topbar {
           .child(div().text_size(11.5).text_color(th.ansi1).child(`-${stats.del}`)))))
       .child(h_flex().flex_1().min_w(0).justify_center().gap(8).items_center()
         .child(div().id("project-name").font_semibold().text_size(14).text_color(th.foreground).truncate().rounded(5).px(4)
-          .when(Boolean(repo && !on), (el) => el.cursor_pointer().hover((s) => s.bg(th.hover)).tooltip(repo.top).on_mouse_down("left", stop).on_click(() => reveal(repo.top)))
+          .when(Boolean(repo && !on), (el) => el.cursor_pointer().hover((s) => s.bg(th.hover)).tooltip(repo.top).on_mouse_down("left", stop).on_click(() => openPath(repo.top)))
           .child(name))
         .when(Boolean(branch), (el) => el.child(h_flex().id("branch").gap(4).px(4).items_center().rounded(5).text_color(th.dim)
           .when(Boolean(repo), (e) => e.cursor_pointer().hover((s) => s.bg(th.hover).text_color(th.foreground)).on_mouse_down("left", stop)

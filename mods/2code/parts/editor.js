@@ -12,15 +12,13 @@ import { t } from "../lib/i18n.js";
 import { fileIcon } from "../lib/fileIcons.js";
 import { fileKey, setDirty } from "../lib/editor.js";
 import { isImage, imageSize, fit } from "../lib/changes.js";
-import { button } from "../lib/ui.js";
+import { button, errText, CACHE } from "../lib/ui.js";
 
 const LANG = { ts: "js", tsx: "js", mts: "js", cts: "js", jsx: "js", mjs: "js", cjs: "js", toml: "yaml", jsonc: "json", json5: "json", svelte: "html", vue: "html", htm: "html", zsh: "bash", sh: "bash", yml: "yaml", py: "python", rb: "ruby", rs: "rust", md: "markdown", mdx: "markdown" };
 const MARKDOWN = /\.(md|mdx|markdown)$/i;
 const hash = (s) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 
 export class EditorPart {
-  static COMMANDS = ["save"];
-
   command(name, cx) {
     if (name === "save") this.save(cx);
   }
@@ -32,7 +30,7 @@ export class EditorPart {
     this.mode = localStorage.getItem("mdMode") ?? "split";
     this.readonly = Boolean(this.on);
     this.state = null; this.saved = null; this.dirty = false; this.banner = null; this.request = null;
-    this.recovery = `${appHome()}/mods/2code/.cache/recovery/${this.id}.txt`; this.recovered = null;
+    this.recovery = `${appHome()}/${CACHE}/recovery/${this.id}.txt`; this.recovered = null;
     cx.spawn(async (cx) => { await this.load(cx); });
     cx.timer.every(3000, (cx) => this.poll(cx));
     cx.timer.every(1500, () => { this.keepRecovery(); });
@@ -41,8 +39,8 @@ export class EditorPart {
   async load(cx) {
     try {
       if (isImage(this.path) && !this.on) {
-        const ext = this.path.split(".").pop(), rel = `mods/2code/.cache/view/${this.id}.${ext}`;
-        await exec("mkdir", ["-p", `${appHome()}/mods/2code/.cache/view`]);
+        const ext = this.path.split(".").pop(), rel = `${CACHE}/view/${this.id}.${ext}`;
+        await fs.mkdir(`${appHome()}/${CACHE}/view`, { recursive: true });
         const r = await exec("cp", [this.path, `${appHome()}/${rel}`]);
         if (r.code !== 0) throw new Error(r.stderr);
         this.image = { rel, size: await imageSize(rel) };
@@ -62,7 +60,7 @@ export class EditorPart {
         if (rec !== null && rec !== text) this.banner = { kind: "recover", text: rec };
       }
     } catch (e) {
-      this.kind = "error"; this.error = String(e?.message ?? e);
+      this.kind = "error"; this.error = errText(e);
     } finally { cx.notify(); }
   }
 
@@ -89,7 +87,11 @@ export class EditorPart {
     if (text === this.recovered) return;
     this.recovered = text;
     if (text === null) fs.unlink(this.recovery).catch(() => {});
-    else fs.mkdir(`${appHome()}/mods/2code/.cache/recovery`, { recursive: true }).then(() => fs.writeFile(this.recovery, text)).catch(() => {});
+    else this.writeRecovery(text);
+  }
+
+  writeRecovery(text) {
+    return fs.mkdir(`${appHome()}/${CACHE}/recovery`, { recursive: true }).then(() => fs.writeFile(this.recovery, text)).catch(() => {});
   }
 
   markSaved(text) {
@@ -134,25 +136,18 @@ export class EditorPart {
     });
   }
 
-  myTab() {
-    return focused()?.tab ?? null;
-  }
-
   // Close buttons on the tab strip ask the shown editor through shared state.
   handleRequest(cx) {
     const req = shared("2code.editorRequest");
     if (!req || req.key !== this.key || req.nonce === this.request) return;
     this.request = req.nonce;
-    const close = () => { const id = this.myTab(); if (id) run("tab.close", { id, confirmed: true }); };
+    const close = () => { const id = focused()?.tab; if (id) run("tab.close", { id, confirmed: true }); };
     if (req.action === "save-close") this.save(cx, close);
     else if (req.action === "discard-close") { if (this.state) this.state.set_value(this.saved ?? ""); this.markSaved(this.saved ?? ""); close(); }
   }
 
   async close() {
-    if (this.dirty && this.state && !this.readonly) {
-      await fs.mkdir(`${appHome()}/mods/2code/.cache/recovery`, { recursive: true }).catch(() => {});
-      await fs.writeFile(this.recovery, this.state.value()).catch(() => {});
-    }
+    if (this.dirty && this.state && !this.readonly) await this.writeRecovery(this.state.value());
   }
 
   bannerRow(th) {

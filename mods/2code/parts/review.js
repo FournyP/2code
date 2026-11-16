@@ -2,14 +2,14 @@
 // shared state. "Copy for agent" puts them on the clipboard in 2code's format.
 import { div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { props, theme, shared, closeOverlay } from "herdr";
+import { theme, shared } from "herdr";
 import { t } from "../lib/i18n.js";
-import { button, icon } from "../lib/ui.js";
-import { reviewList, setReviewList } from "./diff.js";
+import { button, icon, closeSelf, MONO } from "../lib/ui.js";
+import { reviewList, setReviewList } from "../lib/changes.js";
 
 const block = (text) => String(text ?? "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
 
-export function formatForAgent(comments) {
+function formatForAgent(comments) {
   return [
     "Please address these review comments:",
     "",
@@ -38,7 +38,7 @@ export class Review {
     if (clear) setReviewList(this.root, []);
     this.copied = true;
     cx.notify();
-    if (clear) closeOverlay(props().overlay);
+    if (clear) closeSelf();
   }
 
   render() {
@@ -57,13 +57,13 @@ export class Review {
               .hover((s) => s.bg(th.hover).text_color(th.ansi1))
               .on_click((_e, cx) => { setReviewList(this.root, list.filter((_x, j) => j !== i)); cx.notify(); })
               .child(icon("x", 12))))
-          .child(div().p(8).rounded(6).bg(th.raised).font_family("JetBrains Mono").text_size(11.5).text_color(th.muted)
+          .child(div().p(8).rounded(6).bg(th.raised).font_family(MONO).text_size(11.5).text_color(th.muted)
             .children(block(c.code).split("\n").slice(0, 12).map((l) => div().truncate().child(l || " "))))
           .child(div().child(c.body))))
         .when(!list.length, (el) => el.child(div().text_color(th.dim).child(t("reviewEmpty")))))
       .child(h_flex().px(18).py(12).gap(8).items_center().border_t(1).border_color(th.border)
         .child(div().flex_1().text_size(12).text_color(th.dim).child(this.copied ? t("copied") : ""))
-        .child(button("close", th, t("close"), () => closeOverlay(props().overlay)))
+        .child(button("close", th, t("close"), closeSelf))
         .child(button("copy-clear", th, t("copyAndClear"), (_e, cx) => this.copy(cx, true), { disabled: !list.length }))
         .child(button("copy", th, h_flex().gap(6).items_center().child(icon("copy", 13)).child(t("copyForAgent")), (_e, cx) => this.copy(cx, false), { primary: true, disabled: !list.length })));
   }

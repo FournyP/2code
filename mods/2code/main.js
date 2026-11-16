@@ -58,13 +58,10 @@ export default class TwoCode extends View {
     const Part = PARTS[p.part];
     this.part = Part ? new Part() : new Missing(p.part);
     this.part.init?.(p, cx);
-    // Key commands ("2code.<name>" in keys.json) reach the shown copies; each
-    // part handles the ones it knows (see COMMANDS in its class).
+    // Key commands ("2code.<name>" in keys.json) reach every shown copy; each
+    // part's command() ignores names it doesn't know.
     if (this.part.command) cx.spawn(async (cx) => {
-      for (;;) {
-        const name = await nextCommand();
-        if (this.part.constructor.COMMANDS?.includes(name)) this.part.command(name, cx);
-      }
+      for (;;) this.part.command(await nextCommand(), cx);
     });
   }
 
