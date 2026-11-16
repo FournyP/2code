@@ -94,7 +94,7 @@ export class Topbar {
   render(cx) {
     const th = theme();
     shared("2code.locale");
-    const { space, branch, on } = here();
+    const { space, branch, on, cwd } = here();
     const sidebar = find(layout(), "sidebar");
     // Another space or folder than the last refresh: refresh now, and show what
     // Herdr knows until it lands rather than the previous project's numbers.
@@ -104,6 +104,8 @@ export class Topbar {
     const saved = repo ? savedProjects().find((p) => p.path === repo.main && (p.machine ?? null) === (on ?? null)) : null;
     const name = repo ? projectName(saved ?? { path: repo.main }) : space?.name ?? "";
     const stats = current ? this.stats : { add: 0, del: 0 };
+    // "Open in…" takes the checkout, else the focused folder (a group of repos, a plain folder).
+    const folder = repo?.top ?? cwd;
     const pr = repo && branch ? this.prs[`${on ?? ""}:${repo.top}:${branch}`]?.pr : null;
     // macOS draws its window buttons at the layout's traffic_lights over this
     // bar when the sidebar is hidden or narrower than they are (as Herdr's own
@@ -138,8 +140,8 @@ export class Topbar {
             .on_click(() => openOverlay({ mod: "2code", kind: "dialog", width: 520, height: 0.7, props: { part: "branches", root: repo.top, on } })))
           .child(icon("git-branch", 13)).child(div().truncate().child(branch)))))
       .when(Boolean(pr), (el) => el.child(this.prChip(pr, th)))
-      .when(Boolean(repo && !on), (el) => el.child(ghost("open-in", "external-link", t("openIn"),
-        () => openOverlay({ mod: "2code", kind: "popup", width: 220, height: 360, props: { part: "openIn", path: repo.top } }))))
+      .when(Boolean(folder && !on), (el) => el.child(ghost("open-in", "external-link", t("openIn"),
+        () => openOverlay({ mod: "2code", kind: "popup", width: 220, height: 360, props: { part: "openIn", path: folder } }))))
       // As in 2code, the gear is the project's settings (its 2code.json).
       .child(ghost("project-settings", "settings", t("projectSettings"), () => {
         if (!repo) return run("app.settings");
